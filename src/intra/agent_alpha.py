@@ -10,7 +10,6 @@ class AlphaState(IntEnum):
     CLEARED = 4
 
 
-#TODO evaluate actual utility of the action enum
 class AlphaAction(IntEnum):
     MISFOLD = 0
     DEGRADE = 1
@@ -76,30 +75,9 @@ class AgAlpha(core.Agent):
         Applies chosen actions to intra-cellular environment.
         """
 
-        #TODO: in order to increase complexity, in the future it might be helpful to switch from
-        #TODO: enum-states to real value-states
-        for act in self.pending_actions:
+        #TODO: define, specify and implement do mapping
 
-            # Misfold increases toxic concentration burden.
-            if act == AlphaAction.MISFOLD:
-                env.concentration = 1
-
-            # Degradation clears toxic target.
-            elif act == AlphaAction.DEGRADE:
-                env.concentration = 0
-
-            # Aggregation increases concentration and degradation workload.
-            elif act == AlphaAction.AGGREGATE:
-                env.concentration = 1
-                env.workload = 1
-
-            # Oligomer toxicity damages cell.
-            elif act == AlphaAction.INTOXICATE:
-                env.toxicity = 1
-
-            #TODO: add an action mapping for lewy bodies that increases toxicity
-
-    def next(self):
+    def next(self, perception):
         """
         Internal automaton transition.
         """
@@ -134,7 +112,7 @@ class AgAlpha(core.Agent):
         perception = self.see(env)
         self.action(perception)
         self.do(env)
-        self.next()
+        self.next(perception)
 
     def save(self):
         return (self.uid, int(self.state))

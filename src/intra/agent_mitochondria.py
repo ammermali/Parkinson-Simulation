@@ -28,10 +28,11 @@ class AgMito(core.Agent):
         """
         Perception of the mitochondrion.
         """
+        # perceive discretized states for consistency with env
         return (
-            env.energy,
-            env.toxicity,
-            env.clearance
+            env.energy_state().value,
+            env.toxicity_state().value,
+            env.clearance_state().value,
         )
 
     def action(self, perception):
@@ -72,7 +73,37 @@ class AgMito(core.Agent):
         Applies chosen actions to intra-cellular environment.
         """
 
-        #TODO: define, specify and implement do mapping
+        def do(self, env):
+            """
+            Applies chosen actions to intra-cellular environment.
+            """
+
+            for action in self.pending_actions:
+                if action == MitoAction.PRODUCE_ATP:
+                    # Produces energy, lowering the requirement.
+                    env.increase_energy(-0.3)
+                    # ATP production generates some stress.
+                    env.increase_stress(0.02)
+
+                elif action == MitoAction.FUSION or action == MitoAction.FISSION:
+                    env.increase_stress(-0.05)
+
+                elif action == MitoAction.TRANSPORT:
+                    # Transport consumes energy.
+                    env.increase_energy(0.05)
+
+                elif action == MitoAction.RECYCLE:
+                    # Mitophagia consumes the damaged mitochondrion, decreasing toxicity, but increasing clearance and workload.
+                    env.increase_workload(0.15)
+                    env.increase_clearance(0.1)
+                    env.increase_toxicity(-0.15)
+
+                elif action == MitoAction.FAIL_AND_IMPAIR:
+                    # Failure releases pro-apoptosis factors and stress, causing a peak in toxicity.
+                    env.increase_toxicity(0.3)
+                    env.increase_stress(0.3)
+                    # The energy requirement also increases.
+                    env.increase_energy(0.4)
 
     def next(self, perception):
         """

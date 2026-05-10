@@ -30,9 +30,9 @@ class AgAlpha(core.Agent):
         Perception of the alpha-synuclein.
         """
         return (
-            env.stress,
-            env.clearance,
-            env.concentration
+            env.stress_state().value,
+            env.clearance_state().value,
+            env.concentration_state().value,
         )
 
     def action(self, perception):
@@ -74,8 +74,31 @@ class AgAlpha(core.Agent):
         """
         Applies chosen actions to intra-cellular environment.
         """
+        for action in self.pending_actions:
+            if action == AlphaAction.MISFOLD:
+                # Misfolding increases the concentration of abnormal proteins and the workload
+                env.increase_concentration(0.1)
+                env.increase_workload(0.1)
 
-        #TODO: define, specify and implement do mapping
+            elif action == AlphaAction.DEGRADE:
+                # If the agents is subjected to degradation, decreases concentration and toxicity.
+                env.increase_concentration(-0.2)
+                env.increase_toxicity(-0.1)
+
+            elif action == AlphaAction.AGGREGATE:
+                # If aggregation overwhelms clearance mechanisms, it increases concentration and creates TARGETs
+                env.increase_clearance(0.2)
+                env.increase_concentration(0.15)
+                env.increase_target(0.2)
+
+            elif action == AlphaAction.INTOXICATE:
+                # It leads to an increasing of toxicity and stress.
+                env.increase_toxicity(0.25)
+                env.increase_stress(0.15)
+
+            elif action == AlphaAction.TRANSMIT:
+                # Reduces internal concentration.
+                env.increase_concentration(-0.1)
 
     def next(self, perception):
         """

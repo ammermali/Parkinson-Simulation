@@ -1,6 +1,14 @@
 from dataclasses import dataclass, asdict, field
 from enum import IntEnum
 
+ENERGY_THRESHOLD = 0.5
+TOXICITY_THRESHOLD = 0.5
+CLEARANCE_THRESHOLD = 0.5
+STRESS_THRESHOLD = 0.5
+CONCENTRATION_THRESHOLD = 0.5
+WORKLOAD_THRESHOLD = 0.5
+TARGET_THRESHOLD = 0.5
+
 class EnergyState(IntEnum):
     LOW = 0
     HIGH = 1
@@ -124,19 +132,6 @@ class IntraCellEnv:
     def set_healthy(self):
         self.reset()
 
-    def set_parkinsonian_seed(self):
-        """
-        Experimental pathological initialization:
-        introduces early toxic burden.
-        """
-        self.energy = 0.0
-        self.toxicity = 1.0
-        self.clearance = 0.0
-        self.stress = 1.0
-        self.concentration = 1.0
-        self.workload = 1.0
-        self.target = 1.0
-
     # functions to increase real-value states
     def increase_energy(self, value: float):
         self.energy = max(0.0, min(1.0, 1.0 + value))
@@ -156,16 +151,16 @@ class IntraCellEnv:
 
     # method to map from real-values to finite states
     def energy_state(self) -> EnergyState:
-        return EnergyState.HIGH if self.energy > 0.5 else EnergyState.LOW
+        return EnergyState.HIGH if self.energy > ENERGY_THRESHOLD else EnergyState.LOW
     def toxicity_state(self) -> ToxicityState:
-        return ToxicityState.TOXIC if self.toxicity >= 0.7 else ToxicityState.CLEAR
+        return ToxicityState.TOXIC if self.toxicity > TOXICITY_THRESHOLD else ToxicityState.CLEAR
     def clearance_state(self) -> ClearanceState:
-        return ClearanceState.OVERWHELMED if self.clearance > 0.5 else ClearanceState.AVAILABLE
+        return ClearanceState.OVERWHELMED if self.clearance > CLEARANCE_THRESHOLD else ClearanceState.AVAILABLE
     def stress_state(self) -> StressState:
-        return StressState.HIGH if self.stress > 0.5 else StressState.NORMAL
+        return StressState.HIGH if self.stress > STRESS_THRESHOLD else StressState.NORMAL
     def concentration_state(self) -> ConcentrationState:
-        return ConcentrationState.HIGH if self.concentration > 0.5 else ConcentrationState.LOW
+        return ConcentrationState.HIGH if self.concentration > CONCENTRATION_THRESHOLD else ConcentrationState.LOW
     def workload_state(self) -> WorkloadState:
-        return WorkloadState.HIGH if self.workload > 0.5 else WorkloadState.NORMAL
+        return WorkloadState.HIGH if self.workload > WORKLOAD_THRESHOLD else WorkloadState.NORMAL
     def target_state(self) -> TargetState:
-        return TargetState.TOXIC if self.target > 0.5 else TargetState.NON_TOXIC
+        return TargetState.TOXIC if self.target > TARGET_THRESHOLD else TargetState.NON_TOXIC

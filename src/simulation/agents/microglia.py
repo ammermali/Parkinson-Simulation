@@ -6,15 +6,15 @@ from enum import Enum
 
 # Internal State Set
 class MicrogliaState(str, Enum):
-    RESTING = "Resting",
-    CLEARING = "Clearing",
+    RESTING = "Resting"
+    CLEARING = "Clearing"
     ACTIVATED = "Activated"
 
 
 # Action Set
 class MicrogliaAction(str, Enum):
-    SCAN = "scan",
-    CLEAR_DEBRIS = "clear_debris",
+    SCAN = "scan"
+    CLEAR_DEBRIS = "clear_debris"
     INFLAMMATION = "release_inflammation"
 
 # Set of possible perceptions
@@ -37,7 +37,7 @@ class MicrogliaConfig:
     nearby_alpha_low_threshold: float
     debris_clearance_rate: float
     inflammation_release_rate: float
-    alpha_density_normalization: float
+    move_probability: float
 
 class Microglia(AdaptiveAgent):
     def __init__(self, local_id: int, rank: int, type_id: int, config: MicrogliaConfig, alpha_type_id:int):
@@ -46,7 +46,7 @@ class Microglia(AdaptiveAgent):
         self.cfg = config
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[MicrogliaPerception] = None
-        self.pending_actions: Optional[MicrogliaAction] = None
+        self.pending_action: Optional[MicrogliaAction] = None
 
     def see(self, model):
         env = model.environment
@@ -75,7 +75,7 @@ class Microglia(AdaptiveAgent):
         elif self.state == MicrogliaState.CLEARING:
             if perception.inflammation_level >= self.cfg.inflammation_high_threshold:
                 self.state = MicrogliaState.ACTIVATED
-            elif perception.extracellular_debris >= self.cfg.debris_low_threshold:
+            elif perception.extracellular_debris <= self.cfg.debris_low_threshold:
                 self.state = MicrogliaState.RESTING
         elif self.state == MicrogliaState.ACTIVATED:
             if perception.inflammation_level <= self.cfg.inflammation_low_threshold and perception.nearby_alpha <= self.cfg.nearby_alpha_low_threshold and perception.extracellular_debris <= self.cfg.debris_low_threshold:
@@ -92,8 +92,20 @@ class Microglia(AdaptiveAgent):
     def do(self, model):
         env = model.environment
         action = self.pending_action
+
         if action == MicrogliaAction.SCAN:
-            pass # TODO add some behavior
+            position = env.position_of(self)
+            if position is None:
+                pass
+            rng = model.rng
+            if rng.random() > self.cfg.move_probability:
+                return
+            candidate_points = list(env.neighbor_points(position, 1, True))
+            if not candidate_points:
+                return
+            newPos = rng.choice(candidate_points)
+            env.move_to(self, newPos)
+
         if action == MicrogliaAction.CLEAR_DEBRIS:
             env.remove_debris(self.cfg.debris_clearance_rate)
         if action == MicrogliaAction.INFLAMMATION:
@@ -102,5 +114,5 @@ class Microglia(AdaptiveAgent):
     def step(self, model):
         self.see(model)
         self.next()
-        action = self.action()
+        self.action()
         self.do(model)

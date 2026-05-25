@@ -141,12 +141,13 @@ class SubstantiaNigra:
             total += (len(list(self.grid.get_agents(point))) if agent_type is None else self.grid.get_num_agents(point, agent_type))
         return total
 
-    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: int, normalization: float, include_center: bool = True,) -> float:
-        if normalization <= 0:
+    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: int, include_center: bool = True,) -> float:
+        neighborhood_size = self.neighbor_points(center=center, radius=radius, include_center=include_center).__sizeof__()
+        if neighborhood_size <= 0:
             return 0.0
 
         count = self.count_agents_in_radius(center=center,radius=radius,agent_type=agent_type,include_center=include_center)
-        return clamp(count / normalization)
+        return clamp(count / neighborhood_size)
 
     # Internal auxiliary functions
     def _inside_bounds(self, x: int, y: int) -> bool:

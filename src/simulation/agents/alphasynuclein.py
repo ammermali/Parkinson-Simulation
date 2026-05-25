@@ -6,15 +6,15 @@ from repast4py.space import DiscretePoint
 
 # Internal State Set
 class AlphaSynucleinState(str, Enum):
-    MONOMER = "Monomer",
-    MISFOLDED = "Misfolded",
-    OLIGOMER = "Oligomer",
-    CLEARED = "Cleared",
+    MONOMER = "Monomer"
+    MISFOLDED = "Misfolded"
+    OLIGOMER = "Oligomer"
+    CLEARED = "Cleared"
     LEWY_BODY = "LewyBody"
 
 # Action Set
 class AlphaSynucleinAction(str, Enum):
-    MOVE = "move",
+    MOVE = "move"
     STAY = "stay"
 
 @dataclass(frozen=True)

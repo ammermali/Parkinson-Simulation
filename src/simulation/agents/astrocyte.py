@@ -6,12 +6,12 @@ from enum import Enum
 
 # Internal State Set
 class AstrocyteState(str, Enum):
-    SUPPORTIVE = "Supportive",
+    SUPPORTIVE = "Supportive"
     REACTIVE = "Reactive"
 
 # Action Set
 class AstrocyteAction(str, Enum):
-    SUPPORT = "provide_support",
+    SUPPORT = "provide_support"
     INFLAMMATION = "release_inflammation"
 
 @dataclass(frozen=True)

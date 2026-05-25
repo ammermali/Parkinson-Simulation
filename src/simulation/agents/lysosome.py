@@ -7,14 +7,14 @@ from typing import Optional, List
 
 # Internal State Set
 class LysosomeState(str, Enum):
-    INACTIVE = "Inactive",
-    ACTIVE = "Active",
+    INACTIVE = "Inactive"
+    ACTIVE = "Active"
     OVERWHELMED = "Overwhelmed"
 
 # Action Set
 class LysosomeAction(str, Enum):
-    SCAN = "scan",
-    SELECT_TARGET = "select_target",
+    SCAN = "scan"
+    SELECT_TARGET = "select_target"
     DEGRADE = "degrade"
 
 @dataclass(frozen=True)

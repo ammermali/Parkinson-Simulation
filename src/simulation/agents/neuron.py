@@ -3,12 +3,14 @@ from repast4py.space import DiscretePoint
 from src.simulation.agents.adaptiveagent import AdaptiveAgent
 from enum import Enum
 from dataclasses import dataclass
+from src.simulation.substantia_nigra import clamp
+
 
 # Internal State Set
 class NeuronState(str, Enum):
     HEALTHY = "Healthy",
     COMPROMISED = "Compromised",
-    APOPTOPIC = "Apoptotic",
+    APOPTOTIC = "Apoptotic",
     RUPTURED = "Ruptured"
 
 
@@ -26,11 +28,102 @@ class NeuronPerception:
     nearby_alpha: float
     inflammatory_levels: float
     extracellular_debris: float
-    # Some internal scalar are formally considered a part of the perception
+    damage: float # TODO remove it
+    alpha_burden: float # TODO remove it
+
+@dataclass
+class NeuronConfig:
+    per_radius: float
+    nearby_alpha_high_threshold: float
+    inflammation_high_threshold: float
+    debris_high_threshold: float
+    alpha_burden_release_threshold: float
+    damage_accumulation_rate: float
+    damage_recovery_rate: float
+    low_stress_threshold: float
+    inflammation_damage_weight: float
+    debris_damage_weight: float
+    alpha_damage_weight: float
+    compromised_threshold: float
+    apoptotic_threshold: float
+    ruptured_threshold: float
+    dopamine_release_rate: float
+    stress_inflammation_release_rate: float
+    debris_release_rate: float
+    alpha_absorption_rate: float
+    alpha_release_amount: float
+
+
 
 class Neuron(AdaptiveAgent):
+    def __init__(self, local_id: int, rank: int, type_id: int, config: NeuronConfig, alpha_type_id:int):
+        super().__init__(local_id, type_id, rank)
+        self.state = NeuronState.HEALTHY
+        self.cfg = config
+        self.alpha_type_id = alpha_type_id
+        self.last_perception: Optional[NeuronPerception] = None
+        self.pending_action: Optional[NeuronAction] = None
+        self.damage: float = 0.0
+        self.alpha_burden: float = 0.0
 
-    # Further Fields (for Intra environment)
-    # Agent Registry - all the intracellular agents within the neuron are registered here
-    agentRegistry: List<AdaptiveAgent>()
+        self.agent_registry: List[AdaptiveAgent] = []
 
+    def see(self, model):
+        env = model.environment
+        position = env.position_of(self)
+        nearby_alpha = env.density_of_type(position, self.cfg.per_radius,self.alpha_type_id,include_center=True)
+        perception = NeuronPerception(position=position, nearby_alpha=nearby_alpha, inflammatory_levels=env.scalars.inflammation_level, extracellular_debris=env.scalars.extracellular_debris, damage=self.damage, alpha_burden=self.alpha_burden)
+        self.last_perception = perception
+
+    def next(self): # TODO redefine according to agent-environemnt specification
+        external_stress = self._compute_external_stress(self.last_perception) # TODO ???
+        if external_stress <= self.cfg.low_stress_threshold:
+            self.damage = clamp(self.damage - self.cfg.damage_recovery_rate)
+        else:
+            self.damage = clamp(self.damage + external_stress * self.cfg.damage_accumulation_rate)
+        if self.damage >= self.cfg.ruptured_threshold:
+            self.state = NeuronState.RUPTURED
+        elif self.damage >= self.cfg.apoptotic_threshold:
+            self.state = NeuronState.APOPTOTIC
+        elif self.damage >= self.cfg.compromised_threshold:
+            self.state = NeuronState.COMPROMISED
+        else:
+            self.state = NeuronState.HEALTHY
+
+    def action(self):
+        if self.state == NeuronState.HEALTHY:
+            self.pending_action = NeuronAction.R_DOPAMINE
+        elif self.state != NeuronState.APOPTOTIC and self.last_perception.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
+            self.pending_action = NeuronAction.A_ALPHASYNUCLEIN
+        elif self.state == NeuronState.APOPTOTIC or self.alpha_burden >= self.cfg.alpha_burden_release_threshold:
+            self.pending_action = NeuronAction.R_ALPHASYNUCLEIN
+        elif self.state == NeuronState.HEALTHY:
+            if self.last_perception.inflammatory_levels >= self.cfg.inflammation_high_threshold:
+                self.pending_action = NeuronAction.STRESS
+            else:
+                self.pending_action = NeuronAction.R_DOPAMINE
+        else:
+            self.pending_action = NeuronAction.STRESS
+
+    def do(self, model):
+        env = model.environment
+        if self.pending_action == NeuronAction.R_DOPAMINE:
+            env.release_dopamine(self.cfg.dopamine_release_rate)
+        elif self.pending_action == NeuronAction.STRESS:
+            env.add_inflammation(self.cfg.stress_inflammation_release_rate)
+        elif self.pending_action == NeuronAction.DUMP_DEBRIS:
+            env.add_debris(self.cfg.debris_release_rate)
+        elif self.pending_action == NeuronAction.A_ALPHASYNUCLEIN:
+            # TODO: implement the logic for absorbin alpha agents from the external environment
+            pass
+        elif self.pending_action == NeuronAction.R_ALPHASYNUCLEIN:
+            # TODO: implement the logic for releasing of alpha agents on the external environment
+            pass
+    def step(self, model):
+        self.see(model)
+        self.next()
+        self.action()
+        self.do(model)
+
+    def _compute_external_stress(self, perception: NeuronPerception) -> float:
+        return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)

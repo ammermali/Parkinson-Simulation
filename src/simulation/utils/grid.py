@@ -1,4 +1,3 @@
-from __future__ import annotations
 from repast4py.space import DiscretePoint
 from typing import Iterable, Optional
 from src.simulation.utils.clamp import clamp

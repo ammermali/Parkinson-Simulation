@@ -28,8 +28,17 @@ class NeuronPerception:
     nearby_alpha: float
     inflammatory_levels: float
     extracellular_debris: float
-    damage: float # TODO remove it
-    alpha_burden: float # TODO remove it
+
+    # Internal Perception
+    oxidative_stress: float
+    aggregate_density: float
+    intracellular_debris: float
+    energy_demand: float
+    internal_damage: float
+
+    # Temporary simplifications
+    damage: float
+    alpha_burden: float
 
 @dataclass
 class NeuronConfig:
@@ -54,7 +63,7 @@ class NeuronConfig:
     alpha_release_amount: float
 
 @dataclass
-class NeuronInternalEnvironmentConfig:
+class NeuronInternalConfig:
     width: int
     height: int
     oxidative_stress_decay: float
@@ -88,13 +97,20 @@ class Neuron(AdaptiveAgent):
         self.damage: float = 0.0
         self.alpha_burden: float = 0.0
 
-        self.agent_registry: List[AdaptiveAgent] = []
+        self.internal_cfg = NeuronInternalConfig
+        self.internal_scalar = NeuronInternalScalars
+        self.internal_effect = NeuronInternalEffects
+
+        self.grid = LocalGrid(self.internal_cfg.width, self.internal_cfg.height)
+
+        self.degradation_targets: list[AdaptiveAgent] = []
+        self.degradation_assignment: dict[AdaptiveAgent, AdaptiveAgent] = {}
 
     def see(self, model):
         env = model.environment
         position = env.position_of(self)
         nearby_alpha = env.density_of_type(position, self.cfg.per_radius,self.alpha_type_id,include_center=True)
-        perception = NeuronPerception(position=position, nearby_alpha=nearby_alpha, inflammatory_levels=env.scalars.inflammation_level, extracellular_debris=env.scalars.extracellular_debris, damage=self.damage, alpha_burden=self.alpha_burden)
+        perception = NeuronPerception(position=position, nearby_alpha=nearby_alpha, inflammatory_levels=env.scalars.inflammation_level, extracellular_debris=env.scalars.extracellular_debris, damage=self.damage, alpha_burden=self.alpha_burden) # TODO adapt it to new perception
         self.last_perception = perception
 
     def next(self): # TODO redefine according to agent-environemnt specification
@@ -140,6 +156,11 @@ class Neuron(AdaptiveAgent):
             # TODO: implement the logic for releasing of alpha agents on the external environment
             pass
     def step(self, model):
+        self.begin_tick()
+        for agent in list(self.grid.agent_registry):
+            if hasattr(agent, "step"):
+                agent.step(model)
+        self.commit_effects()
         self.see(model)
         self.next()
         self.action()
@@ -148,19 +169,10 @@ class Neuron(AdaptiveAgent):
     def _compute_external_stress(self, perception: NeuronPerception) -> float:
         return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
 
-class NeuronInternalEnvironment:
-    def __init__(self, grid, config: NeuronInternalEnvironmentConfig):
-        self.cfg = config
-        self.grid = LocalGrid(repast_grid=grid)
-        self.scalars = NeuronInternalScalars
-        self.effects = NeuronInternalEffects
+    def begin_tick(self):
+        self.internal_effects = NeuronInternalEffects(0,0,0)
 
-        def begin_tick(self):
-            self.effects = NeuronInternalEffects
-
-        def commit_effects(self):
-            cfg = self.config
-            old = self.scalars
-            eff = self.effects
-            self.scalars.oxidative_stress = clamp(old.oxidative_stress + eff.oxidative_stress - cfg.oxidative_stress_decay * old.aggregate_density)
-            self.scalarse.intracellular_debris = clamp(old.intracellular_debris + eff.debris_added - cfg.intracellular_debris_decay * old.intracellular_debris)
+    def commit_effects(self):
+        self.internal_scalar.oxidative_stress = clamp(self.internal_scalar.oxidative_stress + self.internal_effects.oxidative_stress_added)
+        self.internal_scalar.aggregate_density = clamp(self.internal_scalar.aggregate_density + self.internal_effects.aggregate_density_added)
+        self.internal_scalar.intracellular_debris = clamp(self.internal_scalar.intracellular_debris + self.internal_effects.debris_added)

@@ -1,11 +1,9 @@
 from typing import List, Optional
 from repast4py.space import DiscretePoint
-from torch.distributed.elastic import agent
-
+from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.adaptiveagent import AdaptiveAgent
 from enum import Enum
 from dataclasses import dataclass
-from src.simulation.substantia_nigra import clamp
 
 
 # Internal State Set
@@ -151,14 +149,11 @@ class Neuron(AdaptiveAgent):
         return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
 
 class NeuronInternalEnvironment:
-    def __init__(self, config: NeuronInternalEnvironmentConfig):
+    def __init__(self, grid, config: NeuronInternalEnvironmentConfig):
         self.cfg = config
+        self.grid = LocalGrid(repast_grid=grid)
         self.scalars = NeuronInternalScalars
         self.effects = NeuronInternalEffects
-        self.agent_registry: List[AdaptiveAgent] = []
-        self._locations: dict[AdaptiveAgent, DiscretePoint] = {}
-        self._cells: dict[tuple[int,int], list[AdaptiveAgent]] = {}
-        self._offset_cache: dict[tuple[int,int], list[tuple[int,int]]] = {}
 
         def begin_tick(self):
             self.effects = NeuronInternalEffects
@@ -167,59 +162,5 @@ class NeuronInternalEnvironment:
             cfg = self.config
             old = self.scalars
             eff = self.effects
-
             self.scalars.oxidative_stress = clamp(old.oxidative_stress + eff.oxidative_stress - cfg.oxidative_stress_decay * old.aggregate_density)
             self.scalarse.intracellular_debris = clamp(old.intracellular_debris + eff.debris_added - cfg.intracellular_debris_decay * old.intracellular_debris)
-
-
-        # TODO: refactor the following methods to a new EnvUtils.py class
-        def add_agent(self, agent: AdaptiveAgent, point: DiscretePoint):
-            self.agent_registry.append(agent)
-            self._locations[agent] = point
-            self._cells.setdefault((point.x, point.y), []).append(agent)
-
-        def remove_agent(self, agent: AdaptiveAgent):
-            point = self._locations.get(agent)
-            if point is not None:
-                key = (point.x, point.y)
-                self._cells[key].remove(agent)
-                if not self._cells[key]:
-                    del self._cells[key]
-                del self._locations[agent]
-
-            if agent in self.agent_registry:
-                self.agent_registry.remove(agent)
-
-        def position_of(self,agent) -> Optional[DiscretePoint]:
-            return self._locations.get(agent, None)
-
-        def move_to(self,agent,point: DiscretePoint) -> Optional[DiscretePoint]:
-            if not self._inside_bounds(point.x, point.y):
-                return None
-            old_point = self._locations.get(agent)
-            if old_point is not None:
-                old_key = (old_point.x, old_point.y)
-                self._cells[old_key].remove(agent)
-                if not self._cells[old_key]:
-                    del self._cells[old_key]
-            self._locations[agent] = point
-            self._cells.setdefault(agent.x, agent.y).append(agent)
-            return point
-
-        def agents_at(self, point: DiscretePoint) -> List[AdaptiveAgent]:
-            return list(self._cells.get(agent.x, agent.y, []))
-
-        def neighbor_points(self, center: DiscretePoint, radius: int = 1, include_center: bool = True):
-            for dx, dy in self._get_offsets(radius, include_center):
-                x = center.x + dx
-                y = center.y + dy
-                if self._inside_bounds(x, y):
-                    yield DiscretePoint(x, y)
-
-        def count_agents_in_radius(self, center: DiscretePoint, radius: int = 1, agent_type: Optional[int] = None, include_center: bool = True) -> int:
-            total = 0
-            for point in self.neighbor_points(center, radius, include_center):
-                for agent in self.agents_at(point):
-                    if agent_type is None or agent.ptype == agent_type:
-                        total += 1
-            return total

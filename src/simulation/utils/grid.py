@@ -56,7 +56,9 @@ class LocalGrid:
     # GRID PRIMITIVES
 
     def position_of(self, agent) -> Optional[DiscretePoint]:
-        return self._repast_grid.get_location(agent)
+        if self.is_repast_backed:
+            return self._repast_grid.get_location(agent)
+        return self._locations.get(agent)
 
     def move_to(self, agent, point: DiscretePoint) -> Optional[DiscretePoint]:
         if not self._inside_bounds(point.x, point.y):
@@ -116,7 +118,7 @@ class LocalGrid:
         offsets = []
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
-                if dx * dx + dy * dy <= radius * radius:
+                if dx == 0 and dy == 0 and not include_center:
                     offsets.append((dx, dy))
         if include_center:
             offsets.append((0, 0))

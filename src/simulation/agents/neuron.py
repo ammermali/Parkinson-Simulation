@@ -1,6 +1,4 @@
 from typing import List, Optional, Iterable
-
-from numba.cuda import target
 from repast4py.space import DiscretePoint
 from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.adaptiveagent import AdaptiveAgent
@@ -39,7 +37,6 @@ class NeuronPerception:
     aggregate_density: float
     intracellular_debris: float
     energy_demand: float
-    internal_damage: float
 
     # Derived values
     internal_damage: float
@@ -151,6 +148,7 @@ class Neuron(AdaptiveAgent):
             cell_damage=self.cell_damage
         )
         self.last_perception = perception
+        return perception
 
     def next(self):
         if self.last_perception is None:
@@ -174,6 +172,7 @@ class Neuron(AdaptiveAgent):
             self.state = NeuronState.COMPROMISED
         else:
             self.state = NeuronState.HEALTHY
+        return self.state
 
     def action(self):
         if self.last_perception is None:
@@ -205,7 +204,6 @@ class Neuron(AdaptiveAgent):
         elif self.pending_action == NeuronAction.STRESS:
             env.add_inflammation(self.cfg.stress_inflammation_release_rate)
         elif self.pending_action == NeuronAction.DUMP_DEBRIS:
-            amount = self.internal_scalars.intracellular_debris
             env.add_debris(self.internal_scalars.intracellular_debris)
             self.internal_scalars.intracellular_debris = 0.0
         elif self.pending_action == NeuronAction.A_ALPHASYNUCLEIN:
@@ -215,9 +213,10 @@ class Neuron(AdaptiveAgent):
 
     def step(self, model):
         self.begin_tick()
-        for agent in list(self.grid.agent_registry):
-            if hasattr(agent, "step"):
-                agent.step(model)
+        if self.grid is not None and self.grid.agent_registry is not None:
+            for agent in list(self.grid.agent_registry):
+                if hasattr(agent, "step"):
+                    agent.step(model)
         self.commit_effects()
         self.see(model)
         self.next()
@@ -231,7 +230,6 @@ class Neuron(AdaptiveAgent):
         self.internal_effects = NeuronInternalEffects(0,0,0)
 
     def commit_effects(self):
-        cfg = self.internal_cfg
         s = self.internal_scalars
         e = self.internal_effects
         s.oxidative_stress = clamp(s.oxidative_stress + e.oxidative_stress_added)
@@ -271,14 +269,14 @@ class Neuron(AdaptiveAgent):
         assigned_targets = set(self.degradation_assignment.values())
         return [target for target in self.degradation_targets if target in self.grid.agent_registry and target not in assigned_targets]
 
-    def assign_degradation_target(self, lysosome: AdaptiveAgent, agent: AdaptiveAgent):
-        if lysosome not in self.grid.agent_registry or agent not in self.grid.agent_registry:
+    def assign_degradation_target(self, lysosome: AdaptiveAgent, target: AdaptiveAgent):
+        if lysosome not in self.grid.agent_registry or target not in self.grid.agent_registry:
             pass
         if target in self.degradation_assignment.values():
             pass
-        self.degradation_assignment[lysosome] = agent
+        self.degradation_assignment[lysosome] = target
         if target in self.degradation_targets:
-            self.degradation_targets.remove(agent)
+            self.degradation_targets.remove(target)
 
     def target_for(self, lysosome: AdaptiveAgent) -> Optional[AdaptiveAgent]:
         return self.degradation_assignment.get(lysosome)

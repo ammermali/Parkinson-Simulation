@@ -89,3 +89,35 @@ class SubstantiaNigra:
 
     def release_dopamine(self, amount: float):
         self.effects.dopamine_released += amount
+
+    # Grid wrapper functions
+    def add_agent(self, agent, point: DiscretePoint):
+        self.grid.add_agent(agent, point)
+
+    def remove_agent(self, agent):
+        self.grid.remove_agent(agent)
+
+    def position_of(self, agent):
+        return self.grid.position_of(agent)
+
+    def move_to(self, agent, point: DiscretePoint):
+        return self.grid.move_to(agent, point)
+
+    def agents_at(self, point: DiscretePoint):
+        return self.grid.agents_at(point)
+
+    def agents_in_radius(self, center: DiscretePoint, radius: int):
+        points = self.grid.neighbor_points(center, radius)
+        agents = []
+        for point in points:
+            agents.extend(self.grid.agents_at(point))
+        return agents
+
+    def count_agents_in_radius(self, center: DiscretePoint, radius: int):
+        return self.grid.count_agents_in_radius(center, radius)
+
+    def neighbor_points(self, center: DiscretePoint, radius: int):
+        return self.grid.neighbor_points(center, radius)
+
+    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int]):
+        return self.grid.density_of_type(center, radius, agent_type)

@@ -119,5 +119,5 @@ class SubstantiaNigra:
     def neighbor_points(self, center: DiscretePoint, radius: int):
         return self.grid.neighbor_points(center, radius)
 
-    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int]):
-        return self.grid.density_of_type(center, radius, agent_type)
+    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int], include_center: bool = True):
+        return self.grid.density_of_type(center, radius, agent_type, include_center)

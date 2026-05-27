@@ -40,7 +40,10 @@ class Astrocyte(AdaptiveAgent):
     def see(self, model):
         env = model.environment
         position = env.position_of(self)
-        self.last_perception = AstrocytePerception(position=position,inflammation_level=env.inflammation_level,extracellular_debris=env.extracellular_debris)
+        self.last_perception = AstrocytePerception(
+            position=position,
+            inflammation_level=env.scalars.inflammation_level,
+            extracellular_debris=env.scalars.extracellular_debris)
 
     def next(self):
         perception = self.last_perception

@@ -72,7 +72,6 @@ class NeuronInternalConfig:
     width: int = 10
     height: int = 10
     oxidative_stress_decay: float = 0.01
-    aggregate_density_decay: float = 0.005
     intracellular_debris_decay: float = 0.005
     internal_damage_oxidative_weight: float = 0.4
     internal_damage_aggregate_weight: float = 0.4
@@ -230,11 +229,12 @@ class Neuron(AdaptiveAgent):
         self.internal_effects = NeuronInternalEffects(0,0,0)
 
     def commit_effects(self):
+        cfg = self.internal_cfg
         s = self.internal_scalars
         e = self.internal_effects
-        s.oxidative_stress = clamp(s.oxidative_stress + e.oxidative_stress_added)
+        s.oxidative_stress = clamp(s.oxidative_stress + e.oxidative_stress_added - cfg.oxidative_stress_decay * s.oxidative_stress)
         s.aggregate_density = clamp(s.aggregate_density + e.aggregate_density_added)
-        s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added)
+        s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added - cfg.intracellular_debris_decay * s.intracellular_debris)
 
     def compute_alpha_load(self) -> float:
         alpha_count = sum(
@@ -321,5 +321,5 @@ class Neuron(AdaptiveAgent):
     def count_agents_in_radius(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None) -> int:
         return self.grid.count_agents_in_radius(center, radius, agent_type)
 
-    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None) -> float:
-        return self.grid.density_of_type(center, radius, agent_type)
+    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None, include_center: bool = True) -> float:
+        return self.grid.density_of_type(center, radius, agent_type, include_center)

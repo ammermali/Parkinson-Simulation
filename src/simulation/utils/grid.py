@@ -34,26 +34,33 @@ class LocalGrid:
 
     def add_agent(self, agent, point: DiscretePoint):
         if self.is_repast_backed:
-            raise NotImplementedError()
+            old_point = self._repast_grid.get_location(agent)
+            if old_point is None:
+                self._repast_grid.add(agent)
+            moved_to = self._repast_grid.move(agent, point)
+            if moved_to is None:
+                if old_point is None:
+                    self._repast_grid.remove(agent)
+                raise ValueError(f"Could not add agent at point {point}.")
+            return moved_to
         if not self._inside_bounds(point.x, point.y):
-            raise ValueError()
-        if agent not in self.agent_registry:
+            raise ValueError(f"Point {point} is outside grid bounds.")
+        old_point = self._locations.get(agent)
+        if old_point is not None:
+            old_key = (old_point.x, old_point.y)
+            old_cell = self._cells.get(old_key)
+            if old_cell is not None and agent in old_cell:
+                old_cell.remove(agent)
+                if not old_cell:
+                    del self._cells[old_key]
+        elif agent not in self.agent_registry:
             self.agent_registry.append(agent)
         self._locations[agent] = point
-        self._cells.setdefault((point.x, point.y), []).append(agent)
-
-    def remove_agent(self, agent):
-        if self.is_repast_backed:
-            raise NotImplementedError()
-        point = self._locations.get(agent)
-        if point is not None:
-            key = (point.x, point.y)
-            self._cells[key].remove(agent)
-            if not self._cells[key]:
-                del self._cells[key]
-            del self._locations[agent]
-
-    # GRID PRIMITIVES
+        new_key = (point.x, point.y)
+        new_cell = self._cells.setdefault(new_key, [])
+        if agent not in new_cell:
+            new_cell.append(agent)
+        return point
 
     def position_of(self, agent) -> Optional[DiscretePoint]:
         if self.is_repast_backed:
@@ -61,17 +68,41 @@ class LocalGrid:
         return self._locations.get(agent)
 
     def move_to(self, agent, point: DiscretePoint) -> Optional[DiscretePoint]:
+        if self.is_repast_backed:
+            return self._repast_grid.move(agent, point)
         if not self._inside_bounds(point.x, point.y):
             return None
         old_point = self._locations.get(agent)
         if old_point is not None:
             old_key = (old_point.x, old_point.y)
-            self._cells[old_key].remove(agent)
-            if not self._cells[old_key]:
-                del self._cells[old_key]
+            old_cell = self._cells.get(old_key)
+            if old_cell is not None and agent in old_cell:
+                old_cell.remove(agent)
+                if not old_cell:
+                    del self._cells[old_key]
+        elif agent not in self.agent_registry:
+            self.agent_registry.append(agent)
         self._locations[agent] = point
-        self._cells.setdefault((point.x, point.y), []).append(agent)
+        new_key = (point.x, point.y)
+        new_cell = self._cells.setdefault(new_key, [])
+        if agent not in new_cell:
+            new_cell.append(agent)
         return point
+
+    def remove_agent(self, agent):
+        if self.is_repast_backed:
+            self._repast_grid.remove(agent)
+            return
+        point = self._locations.pop(agent, None)
+        if point is not None:
+            key = (point.x, point.y)
+            cell = self._cells.get(key)
+            if cell is not None and agent in cell:
+                cell.remove(agent)
+                if not cell:
+                    del self._cells[key]
+        if agent in self.agent_registry:
+            self.agent_registry.remove(agent)
 
     def agents_at(self, point: DiscretePoint) -> list:
         if self.is_repast_backed:
@@ -118,9 +149,8 @@ class LocalGrid:
         offsets = []
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
-                if dx == 0 and dy == 0 and not include_center:
-                    offsets.append((dx, dy))
-        if include_center:
-            offsets.append((0, 0))
+                if not include_center and dx == 0 and dy == 0:
+                    continue
+                offsets.append((dx, dy))
         self._offset_cache[key] = offsets
         return offsets

@@ -54,7 +54,7 @@ class NeuronConfig:
     nearby_alpha_high_threshold: float
     inflammation_high_threshold: float
     debris_high_threshold: float
-    alpha_burden_release_threshold: float
+    alpha_load_release_threshold: float
     damage_accumulation_rate: float
     damage_recovery_rate: float
     low_stress_threshold: float
@@ -72,14 +72,14 @@ class NeuronConfig:
 
 @dataclass
 class NeuronInternalConfig:
-    width: int
-    height: int
-    oxidative_stress_decay: float
-    aggregate_density_decay: float
-    intracellular_debris_decay: float
-    internal_damage_oxidative_weight: float
-    internal_damage_aggregate_weight: float
-    internal_damage_debris_weight: float
+    width: int = 10
+    height: int = 10
+    oxidative_stress_decay: float = 0.01
+    aggregate_density_decay: float = 0.005
+    intracellular_debris_decay: float = 0.005
+    internal_damage_oxidative_weight: float = 0.4
+    internal_damage_aggregate_weight: float = 0.4
+    internal_damage_debris_weight: float = 0.2
 
 @dataclass
 class NeuronInternalScalars:
@@ -95,8 +95,16 @@ class NeuronInternalEffects:
     debris_added: float = 0.0
 
 class Neuron(AdaptiveAgent):
-    def __init__(self, local_id: int, rank: int, type_id: int, config: NeuronConfig, alpha_type_id:int):
+    def __init__(
+            self,
+            local_id: int,
+            rank: int,
+            type_id: int,
+            config: NeuronConfig,
+            alpha_type_id:int):
+
         super().__init__(local_id, type_id, rank)
+
         # Adaptive agent fields
         self.state = NeuronState.HEALTHY
         self.cfg = config
@@ -108,12 +116,15 @@ class Neuron(AdaptiveAgent):
         self.cell_damage: float = 0.0
 
         # Environmental state
-        self.internal_cfg = NeuronInternalConfig
-        self.internal_scalar = NeuronInternalScalars
-        self.internal_effect = NeuronInternalEffects
+        self.internal_cfg = NeuronInternalConfig()
+        self.internal_scalars = NeuronInternalScalars()
+        self.internal_effects = NeuronInternalEffects()
 
         # Local (Environmental) Grid
-        self.grid = LocalGrid(self.internal_cfg.width, self.internal_cfg.height)
+        self.grid = LocalGrid(
+            width = self.internal_cfg.width,
+            height = self.internal_cfg.height
+        )
 
         # Lysosome targetting bridging
         self.degradation_targets: list[AdaptiveAgent] = []
@@ -131,10 +142,10 @@ class Neuron(AdaptiveAgent):
             nearby_alpha=nearby_alpha,
             inflammatory_levels=env.scalars.inflammation_level,
             extracellular_debris=env.scalars.extracellular_debris,
-            oxidative_stress=self.internal_scalar.oxidative_stress,
-            aggregate_density=self.internal_scalar.aggregate_density,
-            intracellular_debris=self.internal_scalar.intracellular_debris,
-            energy_demand=self.internal_scalar.energy_demand,
+            oxidative_stress=self.internal_scalars.oxidative_stress,
+            aggregate_density=self.internal_scalars.aggregate_density,
+            intracellular_debris=self.internal_scalars.intracellular_debris,
+            energy_demand=self.internal_scalars.energy_demand,
             internal_damage=self.compute_internal_damage(),
             alpha_load=self.compute_alpha_load(),
             cell_damage=self.cell_damage
@@ -170,12 +181,15 @@ class Neuron(AdaptiveAgent):
         p = self.last_perception
         if self.state == NeuronState.RUPTURED:
             self.pending_action = NeuronAction.DUMP_DEBRIS
-        elif self.state != NeuronState.APOPTOTIC and self.last_perception.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
+
+        elif self.state != NeuronState.APOPTOTIC and p.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
             self.pending_action = NeuronAction.A_ALPHASYNUCLEIN
-        elif self.state == NeuronState.APOPTOTIC or self.alpha_burden >= self.cfg.alpha_burden_release_threshold:
+
+        elif self.state == NeuronState.APOPTOTIC or p.alpha_load >= self.cfg.alpha_load_release_threshold:
             self.pending_action = NeuronAction.R_ALPHASYNUCLEIN
+
         elif self.state == NeuronState.HEALTHY:
-            if self.last_perception.inflammatory_levels >= self.cfg.inflammation_high_threshold:
+            if p.inflammatory_levels >= self.cfg.inflammation_high_threshold:
                 self.pending_action = NeuronAction.STRESS
             else:
                 self.pending_action = NeuronAction.R_DOPAMINE
@@ -191,9 +205,9 @@ class Neuron(AdaptiveAgent):
         elif self.pending_action == NeuronAction.STRESS:
             env.add_inflammation(self.cfg.stress_inflammation_release_rate)
         elif self.pending_action == NeuronAction.DUMP_DEBRIS:
-            # TODO remove from configuration debris_release_rate
-            env.remove_debris(self.internal_scalar.intracellular_debris)
-            self.internal_scalar.intracellular_debris = 0.0
+            amount = self.internal_scalars.intracellular_debris
+            env.add_debris(self.internal_scalars.intracellular_debris)
+            self.internal_scalars.intracellular_debris = 0.0
         elif self.pending_action == NeuronAction.A_ALPHASYNUCLEIN:
             self.absorb_alpha(model)
         elif self.pending_action == NeuronAction.R_ALPHASYNUCLEIN:
@@ -217,15 +231,30 @@ class Neuron(AdaptiveAgent):
         self.internal_effects = NeuronInternalEffects(0,0,0)
 
     def commit_effects(self):
-        self.internal_scalar.oxidative_stress = clamp(self.internal_scalar.oxidative_stress + self.internal_effects.oxidative_stress_added)
-        self.internal_scalar.aggregate_density = clamp(self.internal_scalar.aggregate_density + self.internal_effects.aggregate_density_added)
-        self.internal_scalar.intracellular_debris = clamp(self.internal_scalar.intracellular_debris + self.internal_effects.debris_added)
+        cfg = self.internal_cfg
+        s = self.internal_scalars
+        e = self.internal_effects
+        s.oxidative_stress = clamp(s.oxidative_stress + e.oxidative_stress_added)
+        s.aggregate_density = clamp(s.aggregate_density + e.aggregate_density_added)
+        s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added)
 
     def compute_alpha_load(self) -> float:
-        return 0.0 #TODO
+        alpha_count = sum(
+            1
+            for agent in self.grid.agent_registry
+            if getattr(agent, "ptype", None) == self.alpha_type_id
+        )
+        internal_capacity = max(
+            1,
+            self.internal_cfg.width * self.internal_cfg.height
+        )
+        return clamp(alpha_count / internal_capacity)
 
     def compute_internal_damage(self) -> float:
-        return 0.0 #TODO
+        cfg = self.internal_cfg
+        s = self.internal_scalars
+        value = cfg.internal_damage_oxidative_weight * s.oxidative_stress + cfg.internal_damage_aggregate_weight * s.aggregate_density + cfg.internal_damage_debris_weight * s.intracellular_debris
+        return clamp(value)
 
     def absorb_alpha(self, model):
         pass
@@ -242,14 +271,14 @@ class Neuron(AdaptiveAgent):
         assigned_targets = set(self.degradation_assignment.values())
         return [target for target in self.degradation_targets if target in self.grid.agent_registry and target not in assigned_targets]
 
-    def assign_degradation_target(self, lysosome: AdaptiveAgent, target: AdaptiveAgent):
-        if lysosome not in self.grid.agent_registry or target not in self.grid.agent_registry:
+    def assign_degradation_target(self, lysosome: AdaptiveAgent, agent: AdaptiveAgent):
+        if lysosome not in self.grid.agent_registry or agent not in self.grid.agent_registry:
             pass
         if target in self.degradation_assignment.values():
             pass
-        self.degradation_assignment[lysosome] = target
+        self.degradation_assignment[lysosome] = agent
         if target in self.degradation_targets:
-            self.degradation_targets.remove(target)
+            self.degradation_targets.remove(agent)
 
     def target_for(self, lysosome: AdaptiveAgent) -> Optional[AdaptiveAgent]:
         return self.degradation_assignment.get(lysosome)
@@ -290,9 +319,6 @@ class Neuron(AdaptiveAgent):
 
     def neighbor_points(self, center: DiscretePoint, radius: int) -> Iterable[DiscretePoint]:
         return self.grid.neighbor_points(center, radius)
-
-    def agents_in_radius(self, center: DiscretePoint, radius: int) -> Iterable:
-        return self.grid.agents_in_radius(center, radius)
 
     def count_agents_in_radius(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None) -> int:
         return self.grid.count_agents_in_radius(center, radius, agent_type)

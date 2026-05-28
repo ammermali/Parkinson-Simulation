@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, List
 from repast4py.space import DiscretePoint
+from src.simulation.utils import RNG, clamp
+
 
 # Internal State Set
 class AlphaSynucleinState(str, Enum):
@@ -59,6 +61,9 @@ class AlphaSynuclein(AdaptiveAgent):
         self.aggregate_id: Optional[int] = None # TODO
         self.last_perception: Optional[AlphaSynucleinPerception] = None
         self.pending_action: Optional[AlphaSynucleinAction] = None
+        self.rng = RNG()
+        self.wants_oligomerization: bool = False
+        self.wants_lewy_body_maturation: bool = False
 
     @property
     def aggregate_weight(self) -> float:
@@ -110,19 +115,26 @@ class AlphaSynuclein(AdaptiveAgent):
 
     def next(self) -> AlphaSynucleinState:
         if self.last_perception is None:
-            raise RuntimeError("AlphaSynuclein.next() called before see().")
-
+            raise RuntimeError()
         # TODO: edit it to non-deterministic behavior
+        self.wants_oligomerization = False
+        self.wants_lewy_body_maturation = False
         p = self.last_perception
-        if self.state == AlphaSynucleinState.MONOMER:
-            if p.oxidative_stress >= self.cfg.oxidative_stress_high_threshold:
-                self.state = AlphaSynucleinState.MISFOLDED
-        elif self.state == AlphaSynucleinState.MISFOLDED:
-            if p.local_aggregate_density >= self.cfg.aggregate_density_high_threshold:
-                self.state = AlphaSynucleinState.OLIGOMER
-        elif self.state == AlphaSynucleinState.OLIGOMER:
-            if p.local_aggregate_density >= self.cfg.lewy_body_density_high_threshold:
-                self.state = AlphaSynucleinState.LEWY_BODY
+        rng = self.rng.random()
+        if self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
+            return self.state
+        else:
+            if self.state == AlphaSynucleinState.MONOMER:
+                if self.cfg.oxidative_stress_high_threshold <= rng < p.oxidative_stress:
+                    self.state = AlphaSynucleinState.MISFOLDED
+            elif self.state == AlphaSynucleinState.MISFOLDED:
+                if rng < self.pr_oligomerization():
+                    self.wants_oligomerization = True
+            if self.state == AlphaSynucleinState.OLIGOMER:
+                if rng < self.pr_lewis():
+                    self.wants_lewy_body_maturation = True
+
+        # Further state transitions are handled by the aggregate registry (tbd) TODO
         return self.state
 
     def action(self) -> AlphaSynucleinAction:
@@ -137,7 +149,7 @@ class AlphaSynuclein(AdaptiveAgent):
 
     def do(self, model):
         if self.pending_action is None:
-            raise RuntimeError("AlphaSynuclein.do() called before action().")
+            raise RuntimeError()
         habitat = self._habitat(model)
         self._register_if_degradable(habitat)
         if self.pending_action == AlphaSynucleinAction.STAY:
@@ -189,3 +201,42 @@ class AlphaSynuclein(AdaptiveAgent):
         if self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
             return model.environment
         raise RuntimeError(f"Unknown AlphaSynuclein compartment.")
+
+    def _neighbor_alpha_density(self) -> float:
+        if self.last_perception is None:
+            return 0.0
+        neighbor = self.last_perception.neighbor
+        agents = list(neighbor)
+        if not agents:
+            return 0.0
+        alpha_count = sum(
+            1
+            for agent in agents
+            if getattr(agent, "ptype", None) == self.ptype
+        )
+        return clamp(alpha_count / len(agents))
+
+    def _neighbor_aggregate_density(self) -> float:
+        if self.last_perception is None:
+            return 0.0
+        neighbor = self.last_perception.neighbor
+        agents = list(neighbor)
+        if not agents:
+            return 0.0
+        aggregate_score = sum(
+            getattr(agent, "aggregate_weight", 0.0)
+            for agent in agents
+        )
+        return clamp(aggregate_score / len(agents))
+
+    def pr_oligomerization(self) -> float:
+        alpha_density = self._neighbor_alpha_density()
+        aggregate_density = self._neighbor_aggregate_density()
+        pr = (alpha_density * 0.3 + aggregate_density * 0.7)
+        return clamp(pr)
+
+    def pr_lewis(self) -> float:
+        aggregate_density = self._neighbor_aggregate_density()
+        excess = (aggregate_density - self.cfg.lewy_body_density_high_threshold) / (1.0 - self.cfg.lewy_body_density_high_threshold)
+
+        return clamp(excess)

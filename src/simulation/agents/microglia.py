@@ -3,6 +3,7 @@ from repast4py.space import DiscretePoint
 from src.simulation.agents.adaptiveagent import AdaptiveAgent
 from dataclasses import dataclass
 from enum import Enum
+from src.simulation.utils import RNG
 
 # Internal State Set
 class MicrogliaState(str, Enum):
@@ -47,6 +48,7 @@ class Microglia(AdaptiveAgent):
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[MicrogliaPerception] = None
         self.pending_action: Optional[MicrogliaAction] = None
+        self.rng = RNG()
 
     def see(self, model):
         env = model.environment
@@ -97,13 +99,12 @@ class Microglia(AdaptiveAgent):
             position = env.position_of(self)
             if position is None:
                 pass
-            rng = model.rng
-            if rng.random() > self.cfg.move_probability:
+            if self.rng.random() > self.cfg.move_probability:
                 return
             candidate_points = list(env.neighbor_points(position, 1, True))
             if not candidate_points:
                 return
-            newPos = rng.choice(candidate_points)
+            newPos = self.rng.choice(candidate_points)
             env.move_to(self, newPos)
 
         if action == MicrogliaAction.CLEAR_DEBRIS:

@@ -23,7 +23,6 @@ class NeuronAction(str, Enum):
     STRESS = "signal_stress"
 
 # Perception
-
 @dataclass(frozen=True)
 class NeuronPerception:
     # External Perception
@@ -34,7 +33,6 @@ class NeuronPerception:
 
     # Internal Perception
     oxidative_stress: float
-    aggregate_density: float
     intracellular_debris: float
     energy_demand: float
 
@@ -139,7 +137,6 @@ class Neuron(AdaptiveAgent):
             inflammatory_levels=env.scalars.inflammation_level,
             extracellular_debris=env.scalars.extracellular_debris,
             oxidative_stress=self.internal_scalars.oxidative_stress,
-            aggregate_density=self.internal_scalars.aggregate_density,
             intracellular_debris=self.internal_scalars.intracellular_debris,
             energy_demand=self.internal_scalars.energy_demand,
             internal_damage=self.compute_internal_damage(),
@@ -222,9 +219,6 @@ class Neuron(AdaptiveAgent):
         self.action()
         self.do(model)
 
-    def _compute_external_stress(self, perception: NeuronPerception) -> float:
-        return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
-
     def begin_tick(self):
         self.internal_effects = NeuronInternalEffects(0,0,0)
 
@@ -236,29 +230,35 @@ class Neuron(AdaptiveAgent):
         s.aggregate_density = clamp(s.aggregate_density + e.aggregate_density_added)
         s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added - cfg.intracellular_debris_decay * s.intracellular_debris)
 
+    def _compute_external_stress(self, perception: NeuronPerception) -> float:
+        return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
+
     def compute_alpha_load(self) -> float:
-        alpha_count = sum(
-            1
+        width = max(1, self.internal_cfg.width)
+        height = max(1, self.internal_cfg.height)
+        capacity = width * height
+        aggregate_score = sum(
+            self.aggregate_weight(agent)
             for agent in self.grid.agent_registry
-            if getattr(agent, "ptype", None) == self.alpha_type_id
         )
-        internal_capacity = max(
-            1,
-            self.internal_cfg.width * self.internal_cfg.height
-        )
-        return clamp(alpha_count / internal_capacity)
+        return clamp(aggregate_score / capacity)
 
     def compute_internal_damage(self) -> float:
         cfg = self.internal_cfg
         s = self.internal_scalars
-        value = cfg.internal_damage_oxidative_weight * s.oxidative_stress + cfg.internal_damage_aggregate_weight * s.aggregate_density + cfg.internal_damage_debris_weight * s.intracellular_debris
+        aggregate_density = self.compute_alpha_load()
+        value = (
+            cfg.internal_damage_oxidative_weight * s.oxidative_stress +
+            cfg.internal_damage_aggregate_weight * aggregate_density +
+            cfg.internal_damage_debris_weight * s.intracellular_debris
+        )
         return clamp(value)
 
     def absorb_alpha(self, model):
-        pass
+        pass # TODO
 
     def release_alpha(self, model):
-        pass
+        pass # TODO
 
     # Degradation Buffer Functions
     def register_degradation_target(self, agent: AdaptiveAgent):
@@ -293,7 +293,29 @@ class Neuron(AdaptiveAgent):
     def add_oxidative_stress(self, amount: float):
         self.internal_effects.oxidative_stress_added += amount
 
-    # TODO
+    def oxidative_stress_at(self, position: Optional[DiscretePoint] = None) -> float:
+        return self.internal_scalars.oxidative_stress # TODO: potential future cell-by-cell expansion. Not required as of right now
+
+    def local_aggregate_density_at(
+            self,
+            position: Optional[DiscretePoint] = None,
+            radius: int = 1,
+            include_center: bool = True
+    ) -> float:
+        if position is None:
+            return 0.0
+        points = list(
+            self.grid.neighbor_points(position, radius, include_center)
+        )
+
+        if not points:
+            return 0.0
+
+        aggregate_score = 0.0
+        for point in points:
+            for agent in self.grid.agents_at(point):
+                aggregate_score += self.aggregate_weight(agent)
+        return clamp(aggregate_score / len(points))
 
     # Local Grid Functions
     def add_agent(self, agent: AdaptiveAgent, point: DiscretePoint):
@@ -301,6 +323,8 @@ class Neuron(AdaptiveAgent):
 
     def remove_agent(self, agent: AdaptiveAgent):
         self.grid.remove_agent(agent)
+        self.clear_degradation_assignment(agent)
+        self.degradation_targets.remove(agent)
         # TODO remove from degradation logic
 
     def position_of(self, agent: AdaptiveAgent) -> Optional[DiscretePoint]:
@@ -323,3 +347,14 @@ class Neuron(AdaptiveAgent):
 
     def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None, include_center: bool = True) -> float:
         return self.grid.density_of_type(center, radius, agent_type, include_center)
+
+    def aggregate_weight(self, agent: AdaptiveAgent) -> float:
+        state = getattr(agent, "state", None)
+        state_value = getattr(state, "value", 0.0)
+        if state_value == "Misfolded":
+            return 0.25 # TODO
+        elif state_value == "Oligomer":
+            return 0.5 # TODO
+        if state_value == "LewyBody":
+            return 1.0
+        return 0.0

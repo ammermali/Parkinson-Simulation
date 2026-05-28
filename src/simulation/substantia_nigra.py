@@ -107,6 +107,7 @@ class SubstantiaNigra:
         return self.grid.agents_at(point)
 
     def agents_in_radius(self, center: DiscretePoint, radius: int):
+        # TODO check again if it's equal to LocalGrid.agents_in_radius
         points = self.grid.neighbor_points(center, radius)
         agents = []
         for point in points:

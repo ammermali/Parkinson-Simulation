@@ -66,19 +66,19 @@ class Microglia(AdaptiveAgent):
 
     # In this case, the next() function is not probabilistic but deterministic
     def next(self):
-        perception = self.last_perception
+        p = self.last_perception
         if self.state == MicrogliaState.RESTING:
-            if perception.extracellular_debris >= self.cfg.debris_high_threshold:
+            if p.extracellular_debris >= self.cfg.debris_high_threshold:
                 self.state = MicrogliaState.CLEARING
-            elif perception.inflammation_level >= self.cfg.inflammation_high_threshold or perception.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
+            elif p.inflammation_level >= self.cfg.inflammation_high_threshold or p.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
                 self.state = MicrogliaState.ACTIVATED
         elif self.state == MicrogliaState.CLEARING:
-            if perception.inflammation_level >= self.cfg.inflammation_high_threshold:
+            if p.inflammation_level >= self.cfg.inflammation_high_threshold:
                 self.state = MicrogliaState.ACTIVATED
-            elif perception.extracellular_debris <= self.cfg.debris_low_threshold:
+            elif p.extracellular_debris <= self.cfg.debris_low_threshold:
                 self.state = MicrogliaState.RESTING
         elif self.state == MicrogliaState.ACTIVATED:
-            if perception.inflammation_level <= self.cfg.inflammation_low_threshold and perception.nearby_alpha <= self.cfg.nearby_alpha_low_threshold and perception.extracellular_debris <= self.cfg.debris_low_threshold:
+            if p.inflammation_level <= self.cfg.inflammation_low_threshold and p.nearby_alpha <= self.cfg.nearby_alpha_low_threshold and p.extracellular_debris <= self.cfg.debris_low_threshold:
                 self.state = MicrogliaState.RESTING
 
     def action(self):

@@ -20,7 +20,7 @@ class LocalGrid:
 
         self.agent_registry: list = []
         self._locations: dict[object, DiscretePoint] = {}
-        self._cells: dict[tuple[int, int], list] = {}
+        self._cells: dict[DiscretePoint, list] = {}
 
     @classmethod
     def from_repast_grid(cls, grid) -> "LocalGrid":

@@ -8,16 +8,16 @@ from repast4py.space import DiscretePoint
 
 # Internal State Set
 class MitochondrionState(str, Enum):
-    HEALTHY = "Healthy",
-    CONSUMED = "Consumed",
-    DAMAGED = "Damaged",
+    HEALTHY = "Healthy"
+    CONSUMED = "Consumed"
+    DAMAGED = "Damaged"
     DEBRIS = "Debris"
 
 
 # Action Set
 class MitochondrionAction(str, Enum):
-    STRESS = "stress",
-    FUSE = "fuse",
+    STRESS = "stress"
+    FUSE = "fuse"
     DIVIDE = "divide"
 
 @dataclass(frozen=True)

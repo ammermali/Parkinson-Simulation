@@ -43,15 +43,16 @@ class Astrocyte(AdaptiveAgent):
         self.last_perception = AstrocytePerception(
             position=position,
             inflammation_level=env.scalars.inflammation_level,
-            extracellular_debris=env.scalars.extracellular_debris)
+            extracellular_debris=env.scalars.extracellular_debris
+        )
 
     def next(self):
-        perception = self.last_perception
+        p = self.last_perception
         if self.state == AstrocyteState.SUPPORTIVE:
-            if perception.inflammation_level >= self.cfg.inflammation_high_threshold or perception.extracellular_debris >= self.cfg.debris_high_threshold:
+            if p.inflammation_level >= self.cfg.inflammation_high_threshold or p.extracellular_debris >= self.cfg.debris_high_threshold:
                 self.state = AstrocyteState.REACTIVE
         elif self.state == AstrocyteState.REACTIVE:
-            if perception.inflammation_level <= self.cfg.inflammation_low_threshold and perception.extracellular_debris <= self.cfg.debris_low_threshold:
+            if p.inflammation_level <= self.cfg.inflammation_low_threshold and p.extracellular_debris <= self.cfg.debris_low_threshold:
                 self.state = AstrocyteState.SUPPORTIVE
 
     def action(self):

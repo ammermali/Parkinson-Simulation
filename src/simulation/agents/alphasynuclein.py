@@ -24,7 +24,7 @@ class AlphaSynucleinCompartment(str, Enum):
     EXTRACELLULAR = "Extracellular"
 
 @dataclass(frozen=True)
-class AlphaSynucleinConfig(AdaptiveAgentPerception):
+class AlphaSynucleinConfig:
     perception_radius: int = 1
     move_radius: int = 1
     move_probability: float = 0.5
@@ -33,7 +33,7 @@ class AlphaSynucleinConfig(AdaptiveAgentPerception):
     lewy_body_density_high_threshold: float = 0.8
 
 @dataclass(frozen=True)
-class AlphaSynucleinPerception:
+class AlphaSynucleinPerception(AdaptiveAgentPerception):
     position: Optional[DiscretePoint]
     oxidative_stress: float
     local_aggregate_density: float
@@ -99,8 +99,7 @@ class AlphaSynuclein(AdaptiveAgent):
             agent
             for agent in habitat.agents_in_radius(
                 center=position,
-                radius=self.cfg.perception_radius,
-                include_center=True
+                radius=self.cfg.perception_radius
             )
             if agent is not self
         )
@@ -125,7 +124,7 @@ class AlphaSynuclein(AdaptiveAgent):
             return self.state
         else:
             if self.state == AlphaSynucleinState.MONOMER:
-                if self.cfg.oxidative_stress_high_threshold <= rng < p.oxidative_stress:
+                if p.oxidative_stress >= self.cfg.oxidative_stress_high_threshold and rng < p.oxidative_stress:
                     self.state = AlphaSynucleinState.MISFOLDED
             elif self.state == AlphaSynucleinState.MISFOLDED:
                 if rng < self.pr_oligomerization():
@@ -154,7 +153,7 @@ class AlphaSynuclein(AdaptiveAgent):
         self._register_if_degradable(habitat)
         if self.pending_action == AlphaSynucleinAction.STAY:
             return
-        if model.rng.random() > self.cfg.move_probability:
+        if self.rng.random() > self.cfg.move_probability:
             return
         position = habitat.position_of(self)
         if position is None:
@@ -168,7 +167,7 @@ class AlphaSynuclein(AdaptiveAgent):
         )
         if not candidates:
             return
-        new_position = model.rng.choice(candidates)
+        new_position = self.rng.choice(candidates)
         habitat.move_to(self, new_position)
 
     def mark_cleared(self):
@@ -199,7 +198,7 @@ class AlphaSynuclein(AdaptiveAgent):
     def _neighbor_alpha_density(self) -> float:
         if self.last_perception is None:
             return 0.0
-        neighbor = self.last_perception.neighbor
+        neighbor = self.last_perception.neighbors or []
         agents = list(neighbor)
         if not agents:
             return 0.0
@@ -213,7 +212,7 @@ class AlphaSynuclein(AdaptiveAgent):
     def _neighbor_aggregate_density(self) -> float:
         if self.last_perception is None:
             return 0.0
-        neighbor = self.last_perception.neighbor
+        neighbor = self.last_perception.neighbors or []
         agents = list(neighbor)
         if not agents:
             return 0.0

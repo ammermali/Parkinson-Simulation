@@ -1,5 +1,6 @@
-from typing import List, Optional, Iterable
+from typing import Optional
 from repast4py.space import DiscretePoint
+from src.simulation.utils import GridHabitatMixin
 from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
@@ -87,7 +88,7 @@ class NeuronInternalEffects:
     aggregate_density_added: float = 0.0
     debris_added: float = 0.0
 
-class Neuron(AdaptiveAgent):
+class Neuron(GridHabitatMixin, AdaptiveAgent):
     def __init__(
             self,
             local_id: int,
@@ -123,7 +124,7 @@ class Neuron(AdaptiveAgent):
         self.degradation_targets: list[AdaptiveAgent] = []
         self.degradation_assignment: dict[AdaptiveAgent, AdaptiveAgent] = {}
 
-    def see(self, model):
+    def see(self, model) -> NeuronPerception:
         env = model.environment
         position = env.position_of(self)
         if position is None:
@@ -145,7 +146,7 @@ class Neuron(AdaptiveAgent):
         self.last_perception = perception
         return perception
 
-    def next(self):
+    def next(self) -> NeuronState:
         if self.last_perception is None:
             raise RuntimeError()
         p = self.last_perception
@@ -169,7 +170,7 @@ class Neuron(AdaptiveAgent):
             self.state = NeuronState.HEALTHY
         return self.state
 
-    def action(self):
+    def action(self) -> Optional[NeuronAction]:
         if self.last_perception is None:
             raise RuntimeError()
         p = self.last_perception
@@ -189,10 +190,11 @@ class Neuron(AdaptiveAgent):
                 self.pending_action = NeuronAction.R_DOPAMINE
         else:
             self.pending_action = NeuronAction.STRESS
+        return self.pending_action
 
     def do(self, model):
         if self.last_perception is None:
-            pass
+            return
         env = model.environment
         if self.pending_action == NeuronAction.R_DOPAMINE:
             env.release_dopamine(self.cfg.dopamine_release_rate)
@@ -251,10 +253,10 @@ class Neuron(AdaptiveAgent):
         return clamp(value)
 
     def absorb_alpha(self, model):
-        pass # TODO
+        raise NotImplementedError # TODO
 
     def release_alpha(self, model):
-        pass # TODO
+        raise NotImplementedError # TODO
 
     # Degradation Buffer Functions
     def register_degradation_target(self, agent: AdaptiveAgent):
@@ -267,9 +269,9 @@ class Neuron(AdaptiveAgent):
 
     def assign_degradation_target(self, lysosome: AdaptiveAgent, target: AdaptiveAgent):
         if lysosome not in self.grid.agent_registry or target not in self.grid.agent_registry:
-            pass
+            return
         if target in self.degradation_assignment.values():
-            pass
+            return
         self.degradation_assignment[lysosome] = target
         if target in self.degradation_targets:
             self.degradation_targets.remove(target)
@@ -281,6 +283,11 @@ class Neuron(AdaptiveAgent):
         if lysosome in self.degradation_assignment:
             del self.degradation_assignment[lysosome]
 
+    def clear_assignments_for_target(self, target: AdaptiveAgent):
+        for lysosome, assigned_target in list(self.degradation_assignment.items()):
+            if assigned_target is target:
+                del self.degradation_assignment[lysosome]
+
     def is_target_assigned(self, target: AdaptiveAgent) -> bool:
         return target in self.degradation_assignment.values()
 
@@ -291,6 +298,12 @@ class Neuron(AdaptiveAgent):
 
     def oxidative_stress_at(self, position: Optional[DiscretePoint] = None) -> float:
         return self.internal_scalars.oxidative_stress # TODO: potential future cell-by-cell expansion. Not required as of right now
+
+    def add_intracellular_debris(self, amount: float):
+        self.internal_effects.debris_added += amount
+
+    def energy_demand_at(self, position: Optional[DiscretePoint] = None) -> float:
+        return self.internal_scalars.energy_demand
 
     def local_aggregate_density_at(
             self,
@@ -313,44 +326,40 @@ class Neuron(AdaptiveAgent):
                 aggregate_score += self.aggregate_weight(agent)
         return clamp(aggregate_score / len(points))
 
-    # Local Grid Functions
-    def add_agent(self, agent: AdaptiveAgent, point: DiscretePoint):
-        self.grid.add_agent(agent, point)
-
     def remove_agent(self, agent: AdaptiveAgent):
         self.grid.remove_agent(agent)
         self.clear_degradation_assignment(agent)
-        self.degradation_targets.remove(agent)
-        # TODO remove from degradation logic
-
-    def position_of(self, agent: AdaptiveAgent) -> Optional[DiscretePoint]:
-        return self.grid.position_of(agent)
-
-    def move_to(self, agent: AdaptiveAgent, point: DiscretePoint) -> Optional[DiscretePoint]:
-        return self.grid.move_to(agent, point)
-
-    def agents_at(self, point: DiscretePoint) -> List[AdaptiveAgent]:
-        return self.grid.agents_at(point)
-
-    def agents_in_radius(self, center: DiscretePoint, radius: int) -> Iterable:
-        return self.grid.agents_in_radius(center, radius)
-
-    def neighbor_points(self, center: DiscretePoint, radius: int) -> Iterable[DiscretePoint]:
-        return self.grid.neighbor_points(center, radius)
-
-    def count_agents_in_radius(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None) -> int:
-        return self.grid.count_agents_in_radius(center, radius, agent_type)
-
-    def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None, include_center: bool = True) -> float:
-        return self.grid.density_of_type(center, radius, agent_type, include_center)
+        self.clear_assignments_for_target(agent)
+        if agent in self.degradation_targets:
+            self.degradation_targets.remove(agent)
 
     def aggregate_weight(self, agent: AdaptiveAgent) -> float:
-        state = getattr(agent, "state", None)
-        state_value = getattr(state, "value", 0.0)
-        if state_value == "Misfolded":
-            return 0.25 # TODO
-        elif state_value == "Oligomer":
-            return 0.5 # TODO
-        if state_value == "LewyBody":
-            return 1.0
-        return 0.0
+        return getattr(agent, "aggregate_weight", 0.0)
+
+    def local_debris_density_at(
+            self,
+            position: Optional[DiscretePoint] = None,
+            radius: int = 1,
+            include_center: bool = True
+    ) -> float:
+        if position is None:
+            return self.internal_scalars.intracellular_debris
+        points = list(self.grid.neighbor_points(position, radius, include_center))
+        if not points:
+            return 0.0
+
+        debris_score = 0.0
+        for point in points:
+            for agent in self.grid.agents_at(point):
+                state = getattr(agent, "state", None)
+                if getattr(state, "value", state) == "Debris":
+                    debris_score += 1.0
+        return clamp(debris_score / len(points))
+
+    def local_debris_at(
+            self,
+            position: Optional[DiscretePoint] = None,
+            radius: int = 1,
+            include_center: bool = True
+    ) -> float:
+        return self.local_debris_density_at(position, radius, include_center)

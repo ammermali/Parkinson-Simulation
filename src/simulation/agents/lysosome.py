@@ -49,7 +49,7 @@ class Lysosome(AdaptiveAgent):
         )
         self.rng = RNG()
 
-    def see(self, model):
+    def see(self, model) -> LysosomePerception:
         habitat = self.owner_neuron
         position = habitat.position_of(self)
         task = habitat.target_for(self)
@@ -83,7 +83,7 @@ class Lysosome(AdaptiveAgent):
         self.last_perception = perception
         return perception
 
-    def next(self):
+    def next(self) -> LysosomeState:
         if self.last_perception is None:
             raise RuntimeError()
         old_state = self.state
@@ -93,7 +93,7 @@ class Lysosome(AdaptiveAgent):
                 LysosomeState.ACTIVE: self.pr_inactive_to_active(p)
             })
         elif self.state == LysosomeState.ACTIVE:
-            self.state = self._sameple_with_stay({
+            self.state = self._sample_with_stay({
                 LysosomeState.INACTIVE: self.pr_active_to_inactive(p),
                 LysosomeState.OVERWHELMED: self.pr_active_to_overwhelmed(p)
             })
@@ -104,7 +104,7 @@ class Lysosome(AdaptiveAgent):
         self.last_transition = (old_state, self.state)
         return self.state
 
-    def action(self):
+    def action(self) -> LysosomeAction:
         if self.state == LysosomeState.INACTIVE:
             self.pending_action = LysosomeAction.SCAN
         elif self.state == LysosomeState.ACTIVE:
@@ -114,7 +114,6 @@ class Lysosome(AdaptiveAgent):
                 self.pending_action = LysosomeAction.DEGRADE
         elif self.state == LysosomeState.OVERWHELMED:
             self.pending_action = LysosomeAction.SCAN
-
         return self.pending_action
 
     def do(self, model):
@@ -200,9 +199,9 @@ class Lysosome(AdaptiveAgent):
             habitat.clear_degradation_assignment(self)
             self.target = None
             return
-        mark_cleared = getattr(habitat, "mark_cleared", None)
+        mark_cleared = getattr(target, "mark_cleared", None)
         if callable(mark_cleared):
-            mark_cleared(target)
+            mark_cleared()
             habitat.clear_degradation_assignment(self)
         else:
             habitat.remove_agent(target)

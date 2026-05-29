@@ -63,9 +63,9 @@ class Mitochondrion(AdaptiveAgent):
         self.rng = RNG()
 
 
-    def see(self, model):
-        environment = model.environment
-        position = environment.position_of(self)
+    def see(self, model) -> MitochondrionPerception:
+        habitat = self.owner_neuron
+        position = habitat.position_of(self)
         if position is None:
             perception = MitochondrionPerception(
                 position=None,
@@ -79,20 +79,24 @@ class Mitochondrion(AdaptiveAgent):
             return perception
         perception = MitochondrionPerception(
             position=position,
-            oxidative_stress=environment.oxidative_stress_at(position),
-            energy_demand=environment.energy_demand_at(position),
-            local_aggregate_density=environment.local_aggregate_density_at(
+            oxidative_stress=habitat.oxidative_stress_at(position),
+            energy_demand=habitat.energy_demand_at(position),
+            local_aggregate_density=habitat.local_aggregate_density_at(
                 position=position,
                 radius=self.cfg.perception_radius,
                 include_center=True
             ),
-            local_debris_density=environment.local_debris_density_at(),
-            target_assigned=environment.is_target_assigned(self)
+            local_debris_density=habitat.local_debris_density_at(
+                position=position,
+                radius=self.cfg.perception_radius,
+                include_center=True
+            ),
+            target_assigned=habitat.is_target_assigned(self)
         )
         self.last_perception = perception
         return perception
 
-    def next(self):
+    def next(self) -> MitochondrionState:
         if self.last_perception is None:
             raise RuntimeError()
         old_state = self.state
@@ -119,7 +123,7 @@ class Mitochondrion(AdaptiveAgent):
         self.last_transition = (old_state, self.state)
         return self.state
 
-    def action(self):
+    def action(self) -> Optional[MitochondrionAction]:
         if self.last_perception is None:
             raise RuntimeError()
         p = self.last_perception
@@ -189,27 +193,6 @@ class Mitochondrion(AdaptiveAgent):
         else:
             habitat.internal_effects.debris_added += amount
 
-    def local_debris_density(self, habitat, position: DiscretePoint):
-        try:
-            points = list(
-                habitat.grid.neighbor_points(
-                    position,
-                    self.cfg.perception_radius,
-                    True
-                )
-            )
-        except TypeError:
-            points = list(habitat.neighbor_points(position, self.cfg.perception_radius, True))
-        if not points:
-            return 0.0
-        debris_score = 0.0
-        for point in points:
-            for agent in habitat.grid.agents_at(point):
-                if getattr(agent, "state", None) == MitochondrionState.DEBRIS:
-                    debris_score += 1.0
-        return clamp(debris_score / len(points))
-
-
     def pr_pathological_evolution(self) -> float:
         p = self.last_perception
         return clamp(p.energy_demand * p.oxidative_stress * p.local_aggregate_density)
@@ -228,12 +211,12 @@ class Mitochondrion(AdaptiveAgent):
             state: clamp(probability)
             for state, probability in raw_probabilities.items()
         }
-        total = sum(raw_probabilities.values())
+        total = sum(raw_total.values())
         if total <= 0.0:
             return self.state
         draw = self.rng.random()
         cumulative = 0.0
-        for state, probability in raw_probabilities.items():
+        for state, probability in raw_total.items():
             cumulative += probability / total
             if draw <= cumulative:
                 return state

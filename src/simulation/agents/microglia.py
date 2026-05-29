@@ -49,7 +49,7 @@ class Microglia(AdaptiveAgent):
         self.pending_action: Optional[MicrogliaAction] = None
         self.rng = RNG()
 
-    def see(self, model):
+    def see(self, model) -> MicrogliaPerception:
         env = model.environment
         position = env.position_of(self)
         if position is None:
@@ -64,9 +64,10 @@ class Microglia(AdaptiveAgent):
 
         perception = MicrogliaPerception(position=position, extracellular_debris=env.scalars.extracellular_debris,inflammation_level=env.scalars.inflammation_level,nearby_alpha=nearby_alpha)
         self.last_perception = perception
+        return perception
 
     # In this case, the next() function is not probabilistic but deterministic
-    def next(self):
+    def next(self) -> MicrogliaState:
         p = self.last_perception
         if self.state == MicrogliaState.RESTING:
             if p.extracellular_debris >= self.cfg.debris_high_threshold:
@@ -81,14 +82,16 @@ class Microglia(AdaptiveAgent):
         elif self.state == MicrogliaState.ACTIVATED:
             if p.inflammation_level <= self.cfg.inflammation_low_threshold and p.nearby_alpha <= self.cfg.nearby_alpha_low_threshold and p.extracellular_debris <= self.cfg.debris_low_threshold:
                 self.state = MicrogliaState.RESTING
+        return self.state
 
-    def action(self):
+    def action(self) -> MicrogliaAction:
         if self.state == MicrogliaState.RESTING:
             self.pending_action = MicrogliaAction.SCAN
         if self.state == MicrogliaState.CLEARING:
             self.pending_action = MicrogliaAction.CLEAR_DEBRIS
         if self.state == MicrogliaState.ACTIVATED:
             self.pending_action = MicrogliaAction.INFLAMMATION
+        return self.pending_action
 
     def do(self, model):
         env = model.environment
@@ -97,7 +100,7 @@ class Microglia(AdaptiveAgent):
         if action == MicrogliaAction.SCAN:
             position = env.position_of(self)
             if position is None:
-                pass
+                return
             if self.rng.random() > self.cfg.move_probability:
                 return
             candidate_points = list(env.neighbor_points(position, 1, True))

@@ -1,14 +1,15 @@
 from abc import abstractmethod, ABC
+from typing import Optional
 from repast4py import core
 from enum import Enum
 
-class AdaptiveAgentAction(Enum, ABC):
+class AdaptiveAgentAction(Enum):
     pass
 
-class AdaptiveAgentState(Enum, ABC):
+class AdaptiveAgentState(Enum):
     pass
 
-class AdaptiveAgentPerception(ABC):
+class AdaptiveAgentPerception:
     pass
 
 class AdaptiveAgent(core.Agent, ABC):
@@ -26,7 +27,7 @@ class AdaptiveAgent(core.Agent, ABC):
     def next(self) -> AdaptiveAgentState:
         pass
     @abstractmethod
-    def action(self) -> AdaptiveAgentAction:
+    def action(self) -> Optional[AdaptiveAgentAction]:
         pass
     @abstractmethod
     def do(self, model):

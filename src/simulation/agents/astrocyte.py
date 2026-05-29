@@ -1,21 +1,20 @@
 from typing import Optional
 from repast4py.space import DiscretePoint
-from src.simulation.agents.adaptiveagent import AdaptiveAgent
+from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
-from enum import Enum
 
 # Internal State Set
-class AstrocyteState(str, Enum):
+class AstrocyteState(str, AdaptiveAgentState):
     SUPPORTIVE = "Supportive"
     REACTIVE = "Reactive"
 
 # Action Set
-class AstrocyteAction(str, Enum):
+class AstrocyteAction(str, AdaptiveAgentAction):
     SUPPORT = "provide_support"
     INFLAMMATION = "release_inflammation"
 
 @dataclass(frozen=True)
-class AstrocytePerception:
+class AstrocytePerception(AdaptiveAgentPerception):
     position: Optional[DiscretePoint]
     inflammation_level: float
     extracellular_debris: float
@@ -67,9 +66,3 @@ class Astrocyte(AdaptiveAgent):
             env.remove_inflammation(self.cfg.support_inflammation_reduction_rate)
         elif self.pending_action == AstrocyteAction.INFLAMMATION:
             env.add_inflammation(self.cfg.inflammation_release_rate)
-
-    def step(self, model):
-        self.see(model)
-        self.next()
-        self.action()
-        self.do(model)

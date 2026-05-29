@@ -1,26 +1,25 @@
 from typing import Optional, List
 from repast4py.space import DiscretePoint
-from src.simulation.agents.adaptiveagent import AdaptiveAgent
+from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
-from enum import Enum
 from src.simulation.utils import RNG
 
 # Internal State Set
-class MicrogliaState(str, Enum):
+class MicrogliaState(str, AdaptiveAgentState):
     RESTING = "Resting"
     CLEARING = "Clearing"
     ACTIVATED = "Activated"
 
 
 # Action Set
-class MicrogliaAction(str, Enum):
+class MicrogliaAction(str, AdaptiveAgentAction):
     SCAN = "scan"
     CLEAR_DEBRIS = "clear_debris"
     INFLAMMATION = "release_inflammation"
 
 # Set of possible perceptions
 @dataclass(frozen=True)
-class MicrogliaPerception:
+class MicrogliaPerception(AdaptiveAgentPerception):
     position: Optional[DiscretePoint]
     extracellular_debris: float
     inflammation_level: float
@@ -111,9 +110,3 @@ class Microglia(AdaptiveAgent):
             env.remove_debris(self.cfg.debris_clearance_rate)
         if action == MicrogliaAction.INFLAMMATION:
             env.add_inflammation(self.cfg.inflammation_release_rate)
-
-    def step(self, model):
-        self.see(model)
-        self.next()
-        self.action()
-        self.do(model)

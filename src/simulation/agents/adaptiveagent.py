@@ -1,6 +1,15 @@
 from abc import abstractmethod, ABC
-
 from repast4py import core
+from enum import Enum
+
+class AdaptiveAgentAction(Enum, ABC):
+    pass
+
+class AdaptiveAgentState(Enum, ABC):
+    pass
+
+class AdaptiveAgentPerception(ABC):
+    pass
 
 class AdaptiveAgent(core.Agent, ABC):
     # Common Fields for all Adaptive Agents
@@ -11,14 +20,20 @@ class AdaptiveAgent(core.Agent, ABC):
 
     # Common Functions for all Adaptive Agents
     @abstractmethod
-    def see(self, model):
+    def see(self, model) -> AdaptiveAgentPerception:
         pass
     @abstractmethod
-    def next(self):
+    def next(self) -> AdaptiveAgentState:
         pass
     @abstractmethod
-    def action(self):
+    def action(self) -> AdaptiveAgentAction:
         pass
     @abstractmethod
     def do(self, model):
         pass
+
+    def step(self, model):
+        self.see(model)
+        self.next()
+        self.action()
+        self.do(model)

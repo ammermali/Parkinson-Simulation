@@ -1,13 +1,12 @@
 from typing import List, Optional, Iterable
 from repast4py.space import DiscretePoint
 from src.simulation.utils.grid import LocalGrid, clamp
-from src.simulation.agents.adaptiveagent import AdaptiveAgent
-from enum import Enum
+from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
 
 
 # Internal State Set
-class NeuronState(str, Enum):
+class NeuronState(str, AdaptiveAgentState):
     HEALTHY = "Healthy"
     COMPROMISED = "Compromised"
     APOPTOTIC = "Apoptotic"
@@ -15,7 +14,7 @@ class NeuronState(str, Enum):
 
 
 # Action Set
-class NeuronAction(str, Enum):
+class NeuronAction(str, AdaptiveAgentAction):
     R_DOPAMINE = "release_dopamine"
     R_ALPHASYNUCLEIN = "release_alphasynuclein"
     DUMP_DEBRIS = "dump_debris"
@@ -24,7 +23,7 @@ class NeuronAction(str, Enum):
 
 # Perception
 @dataclass(frozen=True)
-class NeuronPerception:
+class NeuronPerception(AdaptiveAgentPerception):
     # External Perception
     position: Optional[DiscretePoint]
     nearby_alpha: float
@@ -214,10 +213,7 @@ class Neuron(AdaptiveAgent):
                 if hasattr(agent, "step"):
                     agent.step(model)
         self.commit_effects()
-        self.see(model)
-        self.next()
-        self.action()
-        self.do(model)
+        super().step(model)
 
     def begin_tick(self):
         self.internal_effects = NeuronInternalEffects(0,0,0)

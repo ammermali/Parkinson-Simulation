@@ -1,13 +1,13 @@
-from src.simulation.agents.adaptiveagent import AdaptiveAgent
+from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
-from enum import Enum
 from typing import Optional, List
 from repast4py.space import DiscretePoint
 from src.simulation.utils import RNG, clamp
+from enum import Enum
 
 
 # Internal State Set
-class AlphaSynucleinState(str, Enum):
+class AlphaSynucleinState(str, AdaptiveAgentState):
     MONOMER = "Monomer"
     MISFOLDED = "Misfolded"
     OLIGOMER = "Oligomer"
@@ -15,7 +15,7 @@ class AlphaSynucleinState(str, Enum):
     LEWY_BODY = "LewyBody"
 
 # Action Set
-class AlphaSynucleinAction(str, Enum):
+class AlphaSynucleinAction(str, AdaptiveAgentAction):
     MOVE = "move"
     STAY = "stay"
 
@@ -24,7 +24,7 @@ class AlphaSynucleinCompartment(str, Enum):
     EXTRACELLULAR = "Extracellular"
 
 @dataclass(frozen=True)
-class AlphaSynucleinConfig:
+class AlphaSynucleinConfig(AdaptiveAgentPerception):
     perception_radius: int = 1
     move_radius: int = 1
     move_probability: float = 0.5
@@ -170,12 +170,6 @@ class AlphaSynuclein(AdaptiveAgent):
             return
         new_position = model.rng.choice(candidates)
         habitat.move_to(self, new_position)
-
-    def step(self, model):
-        self.see(model)
-        self.next()
-        self.action()
-        self.do(model)
 
     def mark_cleared(self):
         self.state = AlphaSynucleinState.CLEARED

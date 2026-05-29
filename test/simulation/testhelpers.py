@@ -17,6 +17,12 @@ class TestAgent:
     ptype: int = 1
     uid: int = 0
 
+@dataclass(unsafe_hash=True)
+class TestAggregateAgent:
+    aggregate_weight: float = 1.0
+    ptype: int = 99
+    uid: int = 0
+
 class TestRng:
     def __init__(self, random_value: float = 0.0, choice_index: int = 0):
         self.random_value = random_value

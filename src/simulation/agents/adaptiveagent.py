@@ -13,7 +13,6 @@ class AdaptiveAgentPerception:
     pass
 
 class AdaptiveAgent(core.Agent, ABC):
-    # Common Fields for all Adaptive Agents
     state = None
     pt: (int,int) = None
     last_perception = None
@@ -32,9 +31,3 @@ class AdaptiveAgent(core.Agent, ABC):
     @abstractmethod
     def do(self, model):
         pass
-
-    def step(self, model):
-        self.see(model)
-        self.next()
-        self.action()
-        self.do(model)

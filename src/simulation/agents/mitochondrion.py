@@ -182,16 +182,10 @@ class Mitochondrion(AdaptiveAgent):
         )
 
     def _register_if_degradable(self, habitat):
-        register = getattr(habitat, "register_degradation_target", None)
-        if callable(register):
-            register(self)
+        habitat.register_degradation_target(self)
 
     def _add_intracellular_debris(self, habitat, amount: float):
-        add_debris = getattr(habitat, "add_intracellular_debris", None)
-        if callable(add_debris):
-            add_debris(amount)
-        else:
-            habitat.internal_effects.debris_added += amount
+        habitat.add_intracellular_debris(amount)
 
     def pr_pathological_evolution(self) -> float:
         p = self.last_perception

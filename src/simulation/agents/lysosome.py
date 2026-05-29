@@ -2,6 +2,7 @@ from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentStat
 from dataclasses import dataclass
 from repast4py.space import DiscretePoint
 from typing import Optional, List
+from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from src.simulation.utils import clamp, RNG
 
 # Internal State Set
@@ -176,7 +177,7 @@ class Lysosome(AdaptiveAgent):
             habitat,
             targets: List[AdaptiveAgent]
     ) -> float:
-        total_agents = len(getattr(habitat.grid, "agent_registry", []))
+        total_agents = len(habitat.grid.agent_registry)
         if total_agents <= 1:
             return 0.0
         return clamp(len(targets) / (total_agents - 1))
@@ -199,10 +200,10 @@ class Lysosome(AdaptiveAgent):
             habitat.clear_degradation_assignment(self)
             self.target = None
             return
-        mark_cleared = getattr(target, "mark_cleared", None)
-        if callable(mark_cleared):
-            mark_cleared()
+        if isinstance(target, AlphaSynuclein):
+            target.mark_cleared()
             habitat.clear_degradation_assignment(self)
+        # TODO add cases for mitochondrion
         else:
             habitat.remove_agent(target)
         self.target = None

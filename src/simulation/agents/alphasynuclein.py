@@ -46,14 +46,14 @@ class AlphaSynuclein(AdaptiveAgent):
     # Initialization
     def __init__(
             self,
-            id: int,
-            type_id: int,
+            local_id: int,
             rank: int,
+            type_id: int,
             config: AlphaSynucleinConfig,
             compartment: AlphaSynucleinCompartment, # TODO
             owner_neuron: Optional[AdaptiveAgent] = None,
     ):
-        super().__init__(id, type_id, rank)
+        super().__init__(local_id, type_id, rank)
         self.state = AlphaSynucleinState.MONOMER
         self.cfg = config
         self.compartment = compartment
@@ -181,10 +181,8 @@ class AlphaSynuclein(AdaptiveAgent):
             AlphaSynucleinState.LEWY_BODY
         ):
             return
-        # Verify the presence of a "register_degradation_target" function in the habitat and call it if it exists
-        register = getattr(habitat, "register_degradation_target", None)
-        if callable(register):
-            register(self)
+        if self.compartment == AlphaSynucleinCompartment.INTRACELLULAR:
+            habitat.register_degradation_target(self)
 
     def _habitat(self, model):
         if self.compartment == AlphaSynucleinCompartment.INTRACELLULAR:
@@ -205,7 +203,7 @@ class AlphaSynuclein(AdaptiveAgent):
         alpha_count = sum(
             1
             for agent in agents
-            if getattr(agent, "ptype", None) == self.ptype
+            if self._same_type(agent)
         )
         return clamp(alpha_count / len(agents))
 
@@ -217,10 +215,22 @@ class AlphaSynuclein(AdaptiveAgent):
         if not agents:
             return 0.0
         aggregate_score = sum(
-            getattr(agent, "aggregate_weight", 0.0)
+            self._aggregate_weight(agent)
             for agent in agents
         )
         return clamp(aggregate_score / len(agents))
+
+    def _same_type(self, agent: AdaptiveAgent) -> bool:
+        try:
+            return agent.ptype == self.ptype
+        except AttributeError:
+            return False
+
+    def _aggregate_weight(self, agent: AdaptiveAgent) -> float:
+        try:
+            return agent.aggregate_weight
+        except AttributeError:
+            return 0.0
 
     def pr_oligomerization(self) -> float:
         alpha_density = self._neighbor_alpha_density()
@@ -231,5 +241,4 @@ class AlphaSynuclein(AdaptiveAgent):
     def pr_lewis(self) -> float:
         aggregate_density = self._neighbor_aggregate_density()
         excess = (aggregate_density - self.cfg.lewy_body_density_high_threshold) / (1.0 - self.cfg.lewy_body_density_high_threshold)
-
         return clamp(excess)

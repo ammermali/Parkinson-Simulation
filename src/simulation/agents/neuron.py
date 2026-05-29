@@ -1,6 +1,6 @@
 from typing import Optional
 from repast4py.space import DiscretePoint
-from src.simulation.utils import GridHabitatMixin
+from src.simulation.utils import InternalHabitatMixin
 from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
@@ -78,17 +78,15 @@ class NeuronInternalConfig:
 @dataclass
 class NeuronInternalScalars:
     oxidative_stress: float = 0.0
-    aggregate_density: float = 0.0
     intracellular_debris: float = 0.0
     energy_demand: float = 0.5
 
 @dataclass
 class NeuronInternalEffects:
     oxidative_stress_added: float = 0.0
-    aggregate_density_added: float = 0.0
     debris_added: float = 0.0
 
-class Neuron(GridHabitatMixin, AdaptiveAgent):
+class Neuron(InternalHabitatMixin, AdaptiveAgent):
     def __init__(
             self,
             local_id: int,
@@ -115,10 +113,7 @@ class Neuron(GridHabitatMixin, AdaptiveAgent):
         self.internal_effects = NeuronInternalEffects()
 
         # Local (Environmental) Grid
-        self.grid = LocalGrid(
-            width = self.internal_cfg.width,
-            height = self.internal_cfg.height
-        )
+        self.grid = LocalGrid(width = self.internal_cfg.width, height = self.internal_cfg.height)
 
         # Lysosome targetting bridging
         self.degradation_targets: list[AdaptiveAgent] = []
@@ -210,22 +205,33 @@ class Neuron(GridHabitatMixin, AdaptiveAgent):
 
     def step(self, model):
         self.begin_tick()
-        if self.grid is not None and self.grid.agent_registry is not None:
-            for agent in list(self.grid.agent_registry):
-                if hasattr(agent, "step"):
-                    agent.step(model)
+        internal_agents = [
+            agent
+            for agent in list(self.grid.agent_registry)
+            if isinstance(agent, AdaptiveAgent)
+        ]
+        for agent in internal_agents:
+            agent.see(model)
+        for agent in internal_agents:
+            agent.next()
+        for agent in internal_agents:
+            agent.action()
+        for agent in internal_agents:
+            agent.do(model)
         self.commit_effects()
-        super().step(model)
+        self.see(model)
+        self.next()
+        self.action()
+        self.do(model)
 
     def begin_tick(self):
-        self.internal_effects = NeuronInternalEffects(0,0,0)
+        self.internal_effects = NeuronInternalEffects()
 
     def commit_effects(self):
         cfg = self.internal_cfg
         s = self.internal_scalars
         e = self.internal_effects
         s.oxidative_stress = clamp(s.oxidative_stress + e.oxidative_stress_added - cfg.oxidative_stress_decay * s.oxidative_stress)
-        s.aggregate_density = clamp(s.aggregate_density + e.aggregate_density_added)
         s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added - cfg.intracellular_debris_decay * s.intracellular_debris)
 
     def _compute_external_stress(self, perception: NeuronPerception) -> float:
@@ -246,9 +252,9 @@ class Neuron(GridHabitatMixin, AdaptiveAgent):
         s = self.internal_scalars
         aggregate_density = self.compute_alpha_load()
         value = (
-            cfg.internal_damage_oxidative_weight * s.oxidative_stress +
-            cfg.internal_damage_aggregate_weight * aggregate_density +
-            cfg.internal_damage_debris_weight * s.intracellular_debris
+                cfg.internal_damage_oxidative_weight * s.oxidative_stress +
+                cfg.internal_damage_aggregate_weight * aggregate_density +
+                cfg.internal_damage_debris_weight * s.intracellular_debris
         )
         return clamp(value)
 
@@ -297,7 +303,7 @@ class Neuron(GridHabitatMixin, AdaptiveAgent):
         self.internal_effects.oxidative_stress_added += amount
 
     def oxidative_stress_at(self, position: Optional[DiscretePoint] = None) -> float:
-        return self.internal_scalars.oxidative_stress # TODO: potential future cell-by-cell expansion. Not required as of right now
+        return self.internal_scalars.oxidative_stress
 
     def add_intracellular_debris(self, amount: float):
         self.internal_effects.debris_added += amount
@@ -305,21 +311,12 @@ class Neuron(GridHabitatMixin, AdaptiveAgent):
     def energy_demand_at(self, position: Optional[DiscretePoint] = None) -> float:
         return self.internal_scalars.energy_demand
 
-    def local_aggregate_density_at(
-            self,
-            position: Optional[DiscretePoint] = None,
-            radius: int = 1,
-            include_center: bool = True
-    ) -> float:
+    def local_aggregate_density_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
         if position is None:
             return 0.0
-        points = list(
-            self.grid.neighbor_points(position, radius, include_center)
-        )
-
+        points = list(self.grid.neighbor_points(position, radius, include_center))
         if not points:
             return 0.0
-
         aggregate_score = 0.0
         for point in points:
             for agent in self.grid.agents_at(point):
@@ -334,32 +331,31 @@ class Neuron(GridHabitatMixin, AdaptiveAgent):
             self.degradation_targets.remove(agent)
 
     def aggregate_weight(self, agent: AdaptiveAgent) -> float:
-        return getattr(agent, "aggregate_weight", 0.0)
+        try:
+            return agent.aggregate_weight
+        except AttributeError:
+            return 0.0
 
-    def local_debris_density_at(
-            self,
-            position: Optional[DiscretePoint] = None,
-            radius: int = 1,
-            include_center: bool = True
-    ) -> float:
+    def local_debris_density_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
         if position is None:
-            return self.internal_scalars.intracellular_debris
+            return 0.0
         points = list(self.grid.neighbor_points(position, radius, include_center))
         if not points:
             return 0.0
-
         debris_score = 0.0
         for point in points:
             for agent in self.grid.agents_at(point):
-                state = getattr(agent, "state", None)
-                if getattr(state, "value", state) == "Debris":
+                try:
+                    state = agent.state
+                except AttributeError:
+                    continue
+                try:
+                    state_value = state.value
+                except AttributeError:
+                    state_value = state
+                if state_value == "Debris":
                     debris_score += 1.0
         return clamp(debris_score / len(points))
 
-    def local_debris_at(
-            self,
-            position: Optional[DiscretePoint] = None,
-            radius: int = 1,
-            include_center: bool = True
-    ) -> float:
+    def local_debris_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
         return self.local_debris_density_at(position, radius, include_center)

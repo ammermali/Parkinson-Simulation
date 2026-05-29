@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import pytest
 from repast4py.space import DiscretePoint
-from testhelpers import TestAgent, TestRng, TestSubstantiaNigraLikeEnvironment, import_any
+from testhelpers import TestAgent, TestAggregateAgent, TestRng, TestSubstantiaNigraLikeEnvironment, import_any
 
 
 neuron_module = import_any("src.simulation.agents.neuron", "neuron")
@@ -11,6 +11,7 @@ NeuronConfig = neuron_module.NeuronConfig
 NeuronInternalEffects = neuron_module.NeuronInternalEffects
 NeuronPerception = neuron_module.NeuronPerception
 NeuronState = neuron_module.NeuronState
+AdaptiveAgent = neuron_module.AdaptiveAgent
 
 
 def make_config() -> NeuronConfig:
@@ -41,6 +42,29 @@ def make_neuron(alpha_type_id: int = 99) -> Neuron:
     return Neuron(local_id=1, rank=0, type_id=10, config=make_config(), alpha_type_id=alpha_type_id)
 
 
+class DebrisAgent:
+    state = SimpleNamespace(value="Debris")
+
+
+class PhaseAgent(AdaptiveAgent):
+    def __init__(self, local_id: int, log: list[str], label: str):
+        super().__init__(local_id, 77, 0)
+        self.log = log
+        self.label = label
+
+    def see(self, model):
+        self.log.append(f"{self.label}:see")
+
+    def next(self):
+        self.log.append(f"{self.label}:next")
+
+    def action(self):
+        self.log.append(f"{self.label}:action")
+
+    def do(self, model):
+        self.log.append(f"{self.label}:do")
+
+
 def make_perception(
     nearby_alpha: float = 0.0,
     inflammation: float = 0.0,
@@ -55,7 +79,6 @@ def make_perception(
         inflammatory_levels=inflammation,
         extracellular_debris=debris,
         oxidative_stress=0.0,
-        aggregate_density=0.0,
         intracellular_debris=0.0,
         energy_demand=0.5,
         internal_damage=internal_damage,
@@ -77,7 +100,6 @@ class TestNeuron:
     def test_see_builds_external_and_internal_perception(self):
         neuron = make_neuron(alpha_type_id=99)
         neuron.internal_scalars.oxidative_stress = 0.4
-        neuron.internal_scalars.aggregate_density = 0.3
         neuron.internal_scalars.intracellular_debris = 0.2
         neuron.internal_scalars.energy_demand = 0.8
         environment = TestSubstantiaNigraLikeEnvironment(
@@ -92,7 +114,6 @@ class TestNeuron:
         assert perception.inflammatory_levels == 0.35
         assert perception.extracellular_debris == 0.25
         assert perception.oxidative_stress == 0.4
-        assert perception.aggregate_density == 0.3
         assert perception.intracellular_debris == 0.2
         assert perception.energy_demand == 0.8
         assert neuron.last_perception == perception
@@ -100,19 +121,44 @@ class TestNeuron:
     def test_compute_internal_damage_uses_weighted_internal_scalars_and_clamps(self):
         neuron = make_neuron()
         neuron.internal_scalars.oxidative_stress = 1.0
-        neuron.internal_scalars.aggregate_density = 0.5
         neuron.internal_scalars.intracellular_debris = 0.25
+        for uid in range(50):
+            neuron.add_agent(
+                TestAggregateAgent(aggregate_weight=1.0, uid=uid),
+                DiscretePoint(uid % 10, uid // 10),
+            )
         assert neuron.compute_internal_damage() == pytest.approx(0.65)
         neuron.internal_scalars.oxidative_stress = 10.0
         assert neuron.compute_internal_damage() == 1.0
 
     def test_compute_alpha_load_counts_internal_alpha_agents_over_grid_capacity(self):
         neuron = make_neuron(alpha_type_id=99)
-        neuron.add_agent(TestAgent(ptype=99, uid=1), DiscretePoint(0, 0))
-        neuron.add_agent(TestAgent(ptype=99, uid=2), DiscretePoint(1, 0))
-        neuron.add_agent(TestAgent(ptype=7, uid=3), DiscretePoint(2, 0))
+        neuron.add_agent(TestAggregateAgent(aggregate_weight=1.0, uid=1), DiscretePoint(0, 0))
+        neuron.add_agent(TestAggregateAgent(aggregate_weight=1.0, uid=2), DiscretePoint(1, 0))
+        neuron.add_agent(TestAggregateAgent(aggregate_weight=0.0, ptype=7, uid=3), DiscretePoint(2, 0))
 
         assert neuron.compute_alpha_load() == pytest.approx(2 / 100)
+
+    def test_local_aggregate_density_is_derived_from_grid_neighborhood(self):
+        neuron = make_neuron(alpha_type_id=99)
+        center = DiscretePoint(1, 1)
+        neuron.add_agent(TestAggregateAgent(aggregate_weight=1.0, uid=1), center)
+        neuron.add_agent(TestAggregateAgent(aggregate_weight=0.5, uid=2), DiscretePoint(1, 2))
+
+        density = neuron.local_aggregate_density_at(center, radius=1, include_center=True)
+
+        assert density == pytest.approx(1.5 / 9)
+
+    def test_local_debris_density_is_derived_from_grid_neighborhood(self):
+        neuron = make_neuron(alpha_type_id=99)
+        center = DiscretePoint(1, 1)
+        neuron.add_agent(DebrisAgent(), center)
+        neuron.add_agent(DebrisAgent(), DiscretePoint(1, 2))
+
+        density = neuron.local_debris_density_at(center, radius=1, include_center=True)
+
+        assert density == pytest.approx(2 / 9)
+        assert neuron.local_debris_density_at(None) == 0.0
 
     def test_next_recovers_cell_damage_when_total_stress_is_low(self):
         neuron = make_neuron()
@@ -207,23 +253,19 @@ class TestNeuron:
 
     def test_begin_tick_resets_internal_effects(self):
         neuron = make_neuron()
-        neuron.internal_effects = NeuronInternalEffects(oxidative_stress_added=1.0, aggregate_density_added=1.0, debris_added=1.0)
+        neuron.internal_effects = NeuronInternalEffects(oxidative_stress_added=1.0, debris_added=1.0)
         neuron.begin_tick()
         assert neuron.internal_effects.oxidative_stress_added == 0.0
-        assert neuron.internal_effects.aggregate_density_added == 0.0
         assert neuron.internal_effects.debris_added == 0.0
 
     def test_commit_effects_adds_internal_buffers_and_clamps(self):
         neuron = make_neuron()
         neuron.internal_scalars.oxidative_stress = 0.8
-        neuron.internal_scalars.aggregate_density = 0.2
         neuron.internal_scalars.intracellular_debris = 0.1
         neuron.add_oxidative_stress(0.4)
-        neuron.internal_effects.aggregate_density_added = 0.3
         neuron.internal_effects.debris_added = 0.2
         neuron.commit_effects()
         assert neuron.internal_scalars.oxidative_stress == 1.0
-        assert neuron.internal_scalars.aggregate_density == pytest.approx(0.5)
         assert neuron.internal_scalars.intracellular_debris == pytest.approx(0.3)
 
     def test_commit_effects_applies_internal_decay_rates(self):
@@ -258,3 +300,48 @@ class TestNeuron:
 
         assert neuron.target_for(lysosome) is None
         assert neuron.is_target_assigned(target) is False
+
+    def test_remove_agent_clears_target_side_degradation_assignment(self):
+        neuron = make_neuron()
+        lysosome = TestAgent(ptype=50, uid=1)
+        target = TestAgent(ptype=99, uid=2)
+        neuron.add_agent(lysosome, DiscretePoint(0, 0))
+        neuron.add_agent(target, DiscretePoint(1, 0))
+        neuron.assign_degradation_target(lysosome, target)
+
+        neuron.remove_agent(target)
+
+        assert neuron.target_for(lysosome) is None
+        assert neuron.is_target_assigned(target) is False
+        assert target not in neuron.grid.agent_registry
+
+    def test_remove_agent_ignores_non_target_agents(self):
+        neuron = make_neuron()
+        agent = TestAgent(ptype=7, uid=1)
+        neuron.add_agent(agent, DiscretePoint(0, 0))
+
+        neuron.remove_agent(agent)
+
+        assert agent not in neuron.grid.agent_registry
+
+    def test_step_runs_internal_agents_in_phases_before_neuron_step(self):
+        neuron = make_neuron()
+        log = []
+        first = PhaseAgent(101, log, "first")
+        second = PhaseAgent(102, log, "second")
+        neuron.add_agent(first, DiscretePoint(0, 0))
+        neuron.add_agent(second, DiscretePoint(1, 0))
+        environment = TestSubstantiaNigraLikeEnvironment(position=DiscretePoint(2, 2))
+
+        neuron.step(SimpleNamespace(environment=environment, rng=TestRng()))
+
+        assert log == [
+            "first:see",
+            "second:see",
+            "first:next",
+            "second:next",
+            "first:action",
+            "second:action",
+            "first:do",
+            "second:do",
+        ]

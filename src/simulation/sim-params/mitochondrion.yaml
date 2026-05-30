@@ -1,0 +1,38 @@
+perception:
+  perception_radius: 1
+
+thresholds:
+  energy_demand_high_threshold:
+    mean: 0.7
+    std: 0.05
+  oxidative_stress_high_threshold:
+    mean: 0.7
+    std: 0.05
+  oxidative_stress_low_threshold:
+    mean: 0.3
+    std: 0.03
+  aggregate_density_high_threshold:
+    mean: 0.7
+    std: 0.05
+  aggregate_density_low_threshold:
+    mean: 0.3
+    std: 0.03
+  debris_density_high_threshold:
+    mean: 0.7
+    std: 0.05
+  debris_density_low_threshold:
+    mean: 0.3
+    std: 0.03
+  irreversible_damage_threshold:
+    mean: 0.85
+    std: 0.03
+
+rates:
+  stress_release_rate: 0.03
+  damage_stress_release_rate: 0.07
+  debris_release_rate: 0.04
+  fusion_stress_reduction_rate: 0.02
+  fusion_debris_reduction_rate: 0.01
+  healthy_energy_demand_reduction_rate: 0.04
+  consumed_energy_demand_reduction_rate: 0.01
+  high_demand_reduction_multiplier: 1.5

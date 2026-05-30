@@ -1,0 +1,11 @@
+perception:
+  perception_radius: 1
+
+movement:
+  move_radius: 1
+  move_probability: 0.5
+
+thresholds:
+  oxidative_stress_high_threshold:
+    mean: 0.6
+    std: 0.05

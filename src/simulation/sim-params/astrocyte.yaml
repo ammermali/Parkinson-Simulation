@@ -1,0 +1,17 @@
+thresholds:
+  inflammation_high_threshold:
+    mean: 0.7
+    std: 0.05
+  inflammation_low_threshold:
+    mean: 0.2
+    std: 0.03
+  debris_high_threshold:
+    mean: 0.6
+    std: 0.05
+  debris_low_threshold:
+    mean: 0.1
+    std: 0.02
+
+rates:
+  support_inflammation_reduction_rate: 0.05
+  inflammation_release_rate: 0.08

@@ -1,0 +1,11 @@
+initial:
+  debris: 0.4
+  inflammation: 0.5
+  dopamine: 0.2
+
+decay:
+  debris: 0.1
+  inflammation: 0.2
+
+dopamine:
+  smoothing: 0.5

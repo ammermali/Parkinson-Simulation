@@ -1,0 +1,21 @@
+perception:
+  perception_radius: 1
+
+movement:
+  move_radius: 1
+
+degradation:
+  base_degradation_probability: 0.8
+  protein_degradation_ticks: 1
+
+repair:
+  mitochondrion_repair_ticks: 2
+  mitochondrion_repair_probability: 0.8
+
+aggregate:
+  degradation_ticks_base: 1
+  degradation_ticks_per_member: 1
+  degradation_probability_base: 0.35
+  degradation_probability_per_member: 0.05
+  overwhelm_probability_base: 0.02
+  overwhelm_probability_per_member: 0.01

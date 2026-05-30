@@ -1,0 +1,42 @@
+grid:
+  height: 5
+  width: 5
+
+perception:
+  per_radius: 1
+
+thresholds:
+  nearby_alpha_high_threshold:
+    mean: 0.5
+    std: 0.05
+  inflammation_high_threshold:
+    mean: 0.7
+    std: 0.05
+  debris_high_threshold:
+    mean: 0.6
+    std: 0.05
+  alpha_load_release_threshold:
+    mean: 0.02
+    std: 0.005
+  low_stress_threshold:
+    mean: 0.05
+    std: 0.01
+  compromised_threshold: 0.3
+  apoptotic_threshold: 0.6
+  ruptured_threshold: 0.9
+
+damage:
+  damage_accumulation_rate: 1.0
+  damage_recovery_rate: 0.1
+  inflammation_damage_weight: 0.4
+  debris_damage_weight: 0.3
+  alpha_damage_weight: 0.3
+
+rates:
+  dopamine_release_rate: 0.2
+  stress_inflammation_release_rate: 0.15
+  debris_release_rate: 0.25
+
+alpha:
+  alpha_absorption_rate: 0.1
+  alpha_release_amount: 0.05

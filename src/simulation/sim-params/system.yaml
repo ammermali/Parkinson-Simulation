@@ -9,10 +9,3 @@ external.population:
 world:
   height: 10
   width: 10
-
-intracellular:
-  grid_size: 5
-  alpha_per_neuron: 30
-  mitochondria_per_neuron: 8
-  lysosomes_per_neuron: 4
-

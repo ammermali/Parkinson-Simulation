@@ -80,6 +80,7 @@ class AggregateRegistry:
             self.add_alpha_to_aggregate(habitat, aggregate, member)
         if state == AggregateState.LEWY_BODY:
             self._set_members_state(aggregate, AlphaSynucleinState.LEWY_BODY)
+        self._register_degradation_target(habitat, aggregate)
         return aggregate
 
     def add_alpha_to_aggregate(self, habitat, aggregate: AlphaAggregate, alpha: AlphaSynuclein) -> bool:
@@ -118,9 +119,11 @@ class AggregateRegistry:
             if target.state == AggregateState.LEWY_BODY
             else AlphaSynucleinState.OLIGOMER,
         )
+        self._untrack_degradation_target(habitat, source)
         habitat.grid.remove_agent(source)
         del self._aggregates[source.aggregate_id]
         del self._members[source.aggregate_id]
+        self._register_degradation_target(habitat, target)
         return True
 
     def mature_to_lewy_body(self, aggregate: AlphaAggregate):
@@ -217,7 +220,7 @@ class AggregateRegistry:
     def _remove_aggregate(self, aggregate: AlphaAggregate):
         members = self._members.pop(aggregate.aggregate_id, set())
         for member in members:
-            member.aggregate_id = None
+            member.mark_cleared()
         self._aggregates.pop(aggregate.aggregate_id, None)
 
     def _remove_member(self, alpha: AlphaSynuclein):
@@ -273,3 +276,17 @@ class AggregateRegistry:
             return uid[index]
         except (IndexError, KeyError, TypeError):
             return None
+
+    def _register_degradation_target(self, habitat, aggregate: AlphaAggregate):
+        register = getattr(habitat, "register_degradation_target", None)
+        if callable(register):
+            register(aggregate)
+
+    def _untrack_degradation_target(self, habitat, aggregate: AlphaAggregate):
+        unregister = getattr(habitat, "unregister_degradation_target", None)
+        if callable(unregister):
+            unregister(aggregate)
+            return
+        clear_target = getattr(habitat, "clear_assignments_for_target", None)
+        if callable(clear_target):
+            clear_target(aggregate)

@@ -90,6 +90,14 @@ class NeuronInternalEffects:
     debris_added: float = 0.0
 
 class Neuron(InternalHabitatMixin, AdaptiveAgent):
+    """Neuron macro-agent with an intracellular habitat.
+
+    The neuron owns a local grid where organelles, alpha-synuclein proteins,
+    aggregates and lysosomes interact. It also exposes small buffer APIs used
+    by intracellular agents to coordinate deferred work, such as lysosomal
+    degradation targets and aggregate bookkeeping.
+    """
+
     def __init__(
             self,
             local_id: int,
@@ -118,7 +126,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         # Local (Environmental) Grid
         self.grid = LocalGrid(width = self.internal_cfg.width, height = self.internal_cfg.height)
 
-        # Lysosome targetting bridging
+        # Lysosome targeting bridge. Producers register degradable agents here;
+        # lysosomes claim one unassigned target at a time.
         self.degradation_targets: list[AdaptiveAgent] = []
         self.degradation_assignment: dict[AdaptiveAgent, AdaptiveAgent] = {}
         self.aggregate_registry = AggregateRegistry()
@@ -276,36 +285,84 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     # Degradation Buffer Functions
     def register_degradation_target(self, agent: AdaptiveAgent):
-        if agent in self.grid.agent_registry and agent not in self.degradation_targets:
+        """Register an intracellular agent as available for lysosomal cleanup."""
+
+        self._prune_degradation_buffers()
+        if agent in self.grid.agent_registry and agent not in self.degradation_targets and not self.is_target_assigned(agent):
             self.degradation_targets.append(agent)
 
     def available_degradation_targets(self) -> list[AdaptiveAgent]:
+        """Return unassigned targets that are still present in the local grid."""
+
+        self._prune_degradation_buffers()
         assigned_targets = set(self.degradation_assignment.values())
         return [target for target in self.degradation_targets if target in self.grid.agent_registry and target not in assigned_targets]
 
-    def assign_degradation_target(self, lysosome: AdaptiveAgent, target: AdaptiveAgent):
+    def assign_degradation_target(self, lysosome: AdaptiveAgent, target: AdaptiveAgent) -> bool:
+        """Assign one available target to one lysosome.
+
+        Returns True when the assignment is accepted. A target can only be
+        assigned to one lysosome at a time; if the lysosome already had a
+        different target, that old target is returned to the available buffer.
+        """
+
+        self._prune_degradation_buffers()
         if lysosome not in self.grid.agent_registry or target not in self.grid.agent_registry:
-            return
+            return False
         if target in self.degradation_assignment.values():
-            return
+            return self.degradation_assignment.get(lysosome) is target
+        old_target = self.degradation_assignment.pop(lysosome, None)
+        if old_target is not None and old_target is not target:
+            self.register_degradation_target(old_target)
         self.degradation_assignment[lysosome] = target
         if target in self.degradation_targets:
             self.degradation_targets.remove(target)
+        return True
 
     def target_for(self, lysosome: AdaptiveAgent) -> Optional[AdaptiveAgent]:
+        """Return the target currently assigned to a lysosome, if any."""
+
+        self._prune_degradation_buffers()
         return self.degradation_assignment.get(lysosome)
 
-    def clear_degradation_assignment(self, lysosome: AdaptiveAgent):
-        if lysosome in self.degradation_assignment:
-            del self.degradation_assignment[lysosome]
+    def clear_degradation_assignment(self, lysosome: AdaptiveAgent, requeue_target: bool = False):
+        """Clear a lysosome assignment and optionally make the target available."""
+
+        target = self.degradation_assignment.pop(lysosome, None)
+        if requeue_target and target is not None:
+            self.register_degradation_target(target)
 
     def clear_assignments_for_target(self, target: AdaptiveAgent):
+        """Remove every lysosome assignment pointing at a target."""
+
         for lysosome, assigned_target in list(self.degradation_assignment.items()):
             if assigned_target is target:
                 del self.degradation_assignment[lysosome]
 
     def is_target_assigned(self, target: AdaptiveAgent) -> bool:
+        """Return whether a target is already claimed by any lysosome."""
+
+        self._prune_degradation_buffers()
         return target in self.degradation_assignment.values()
+
+    def unregister_degradation_target(self, target: AdaptiveAgent):
+        """Remove a target from all degradation buffers without touching grid state."""
+
+        if target in self.degradation_targets:
+            self.degradation_targets.remove(target)
+        self.clear_assignments_for_target(target)
+
+    def _prune_degradation_buffers(self):
+        """Drop stale targets and assignments whose agents left the local grid."""
+
+        self.degradation_targets = [
+            target
+            for target in self.degradation_targets
+            if target in self.grid.agent_registry
+        ]
+        for lysosome, target in list(self.degradation_assignment.items()):
+            if lysosome not in self.grid.agent_registry or target not in self.grid.agent_registry:
+                del self.degradation_assignment[lysosome]
 
 
     # Internal Scalar Functions

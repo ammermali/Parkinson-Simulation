@@ -218,6 +218,13 @@ class TestNeuron:
         neuron.action()
         assert neuron.pending_action == NeuronAction.STRESS
 
+    def test_action_healthy_neuron_signals_stress_when_extracellular_debris_is_high(self):
+        neuron = make_neuron()
+        neuron.state = NeuronState.HEALTHY
+        neuron.last_perception = make_perception(debris=0.7)
+        neuron.action()
+        assert neuron.pending_action == NeuronAction.STRESS
+
     def test_action_healthy_neuron_releases_dopamine_in_low_stress(self):
         neuron = make_neuron()
         neuron.state = NeuronState.HEALTHY

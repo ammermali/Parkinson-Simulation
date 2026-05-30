@@ -123,3 +123,17 @@ class TestMicroglia:
         microglia.pending_action = MicrogliaAction.SCAN
         microglia.do(SimpleNamespace(environment=environment, rng=TestRng(random_value=1.0)))
         assert environment.moves == []
+
+    def test_step_runs_see_next_action_do(self):
+        microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(), alpha_type_id=9)
+        environment = TestSubstantiaNigraLikeEnvironment(
+            position=DiscretePoint(1, 1),
+            debris=0.7,
+            inflammation=0.0,
+        )
+
+        microglia.step(SimpleNamespace(environment=environment))
+
+        assert microglia.state == MicrogliaState.CLEARING
+        assert microglia.pending_action == MicrogliaAction.CLEAR_DEBRIS
+        assert environment.removed_debris == pytest.approx(0.10)

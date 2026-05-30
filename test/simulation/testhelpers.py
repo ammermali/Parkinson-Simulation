@@ -31,6 +31,9 @@ class TestRng:
     def random(self) -> float:
         return self.random_value
 
+    def gaussian(self, mean: float, std: float) -> float:
+        return mean + std * self.random_value
+
     def choice(self, values):
         return list(values)[self.choice_index]
 

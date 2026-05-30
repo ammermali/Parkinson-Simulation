@@ -275,9 +275,7 @@ class TestAlphaTransmission:
             member.release_to_environment()
             aggregate.add_member(member.uid, member)
         environment.add_agent(aggregate, DiscretePoint(4, 4))
-
         absorbed = neuron.absorb_alpha(SimpleNamespace(environment=environment))
-
         assert absorbed is aggregate
         assert aggregate not in environment.grid.agent_registry
         assert aggregate in neuron.grid.agent_registry
@@ -299,12 +297,10 @@ class TestAlphaTransmission:
         )
         point = DiscretePoint(4, 4)
         environment.add_agent(alpha, point)
-
         alpha.see(SimpleNamespace(environment=environment))
         alpha.next()
         action = alpha.action()
         alpha.do(SimpleNamespace(environment=environment))
-
         assert action == AlphaSynucleinAction.STAY
         assert environment.position_of(alpha) == point
         assert environment.moves == []

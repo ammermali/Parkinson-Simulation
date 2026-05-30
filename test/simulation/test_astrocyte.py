@@ -53,10 +53,11 @@ class TestAstrocyte:
         astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=make_config())
         environment = AstrocyteEnvironmentStub(inflammation=0.4, debris=0.3)
         model = SimpleNamespace(environment=environment)
-        astrocyte.see(model)
-        assert astrocyte.last_perception.position == environment.position
-        assert astrocyte.last_perception.inflammation_level == 0.4
-        assert astrocyte.last_perception.extracellular_debris == 0.3
+        perception = astrocyte.see(model)
+        assert perception is astrocyte.last_perception
+        assert perception.position == environment.position
+        assert perception.inflammation_level == 0.4
+        assert perception.extracellular_debris == 0.3
 
     def test_next_changes_supportive_to_reactive_when_inflammation_is_high(self):
         astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=make_config())

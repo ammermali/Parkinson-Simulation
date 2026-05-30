@@ -37,19 +37,18 @@ class LysosomePerception(AdaptiveAgentPerception):
 @dataclass(frozen=True)
 class LysosomeConfig:
     """Tunable lysosomal sensing, movement and cleanup parameters."""
-
-    perception_radius: int = 1
-    move_radius: int = 1
-    base_degradation_probability: float = 0.8
-    protein_degradation_ticks: int = 1
-    mitochondrion_repair_ticks: int = 2
-    mitochondrion_repair_probability: float = 0.8
-    aggregate_degradation_ticks_base: int = 1
-    aggregate_degradation_ticks_per_member: int = 1
-    aggregate_degradation_probability_base: float = 0.35
-    aggregate_degradation_probability_per_member: float = 0.05
-    aggregate_overwhelm_probability_base: float = 0.02
-    aggregate_overwhelm_probability_per_member: float = 0.01
+    perception_radius: int
+    move_radius: int
+    base_degradation_probability: float
+    protein_degradation_ticks: int
+    mitochondrion_repair_ticks: int
+    mitochondrion_repair_probability: float
+    aggregate_degradation_ticks_base: int
+    aggregate_degradation_ticks_per_member: int
+    aggregate_degradation_probability_base: float
+    aggregate_degradation_probability_per_member: float
+    aggregate_overwhelm_probability_base: float
+    aggregate_overwhelm_probability_per_member: float
 
 class Lysosome(AdaptiveAgent):
     """Intracellular degradation agent coordinated by neuron target buffers.

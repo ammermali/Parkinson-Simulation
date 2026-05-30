@@ -38,23 +38,23 @@ class MitochondrionPerception(AdaptiveAgentPerception):
 @dataclass(frozen=True)
 class MitochondrionConfig:
     """Parameters for mitochondrial stress, recovery and deficit reduction."""
-    perception_radius: int = 1
-    energy_demand_high_threshold: float = 0.7
-    oxidative_stress_high_threshold: float = 0.7
-    oxidative_stress_low_threshold: float = 0.3
-    aggregate_density_high_threshold: float = 0.7
-    aggregate_density_low_threshold: float = 0.3
-    debris_density_high_threshold: float = 0.7
-    debris_density_low_threshold: float = 0.3
-    irreversible_damage_threshold: float = 0.85
-    stress_release_rate: float = 0.03
-    damage_stress_release_rate: float = 0.07
-    debris_release_rate: float = 0.04
-    fusion_stress_reduction_rate: float = 0.02
-    fusion_debris_reduction_rate: float = 0.01
-    healthy_energy_demand_reduction_rate: float = 0.04
-    consumed_energy_demand_reduction_rate: float = 0.01
-    high_demand_reduction_multiplier: float = 1.5
+    perception_radius: int
+    energy_demand_high_threshold: float
+    oxidative_stress_high_threshold: float
+    oxidative_stress_low_threshold: float
+    aggregate_density_high_threshold: float
+    aggregate_density_low_threshold: float
+    debris_density_high_threshold: float
+    debris_density_low_threshold: float
+    irreversible_damage_threshold: float
+    stress_release_rate: float
+    damage_stress_release_rate: float
+    debris_release_rate: float
+    fusion_stress_reduction_rate: float
+    fusion_debris_reduction_rate: float
+    healthy_energy_demand_reduction_rate: float
+    consumed_energy_demand_reduction_rate: float
+    high_demand_reduction_multiplier: float
 
 class Mitochondrion(AdaptiveAgent):
     """Mitochondrial agent inside a neuron.

@@ -29,11 +29,10 @@ class AlphaSynucleinCompartment(str, Enum):
 @dataclass(frozen=True)
 class AlphaSynucleinConfig:
     """Parameters for single-protein perception, movement, and misfolding."""
-    # TODO parameterable
-    perception_radius: int = 1
-    move_radius: int = 1
-    move_probability: float = 0.5
-    oxidative_stress_high_threshold: float = 0.6
+    perception_radius: int
+    move_radius: int
+    move_probability: float
+    oxidative_stress_high_threshold: float
 
 @dataclass(frozen=True)
 class AlphaSynucleinPerception(AdaptiveAgentPerception):

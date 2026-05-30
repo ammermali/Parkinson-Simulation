@@ -110,7 +110,15 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
     degradation targets and aggregate bookkeeping.
     """
 
-    def __init__(self, local_id: int, rank: int, type_id: int, config: NeuronConfig, alpha_type_id:int):
+    def __init__(
+        self,
+        local_id: int,
+        rank: int,
+        type_id: int,
+        config: NeuronConfig,
+        alpha_type_id:int,
+        internal_config: Optional[NeuronInternalConfig] = None,
+    ):
         super().__init__(local_id, type_id, rank)
         # Adaptive agent fields
         self.state: NeuronState = NeuronState.HEALTHY
@@ -124,8 +132,10 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.cell_damage: float = 0.0
 
         # Environmental state
-        self.internal_cfg = NeuronInternalConfig()
-        self.internal_scalars = NeuronInternalScalars()
+        self.internal_cfg = internal_config or NeuronInternalConfig()
+        self.internal_scalars = NeuronInternalScalars(
+            energy_demand=self.internal_cfg.energy_demand_baseline,
+        )
         self.internal_effects = NeuronInternalEffects()
 
         # Local (Environmental) Grid

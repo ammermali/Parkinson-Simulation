@@ -1,10 +1,10 @@
 from random import Random
 
-RANDOM = Random()
-RANDOM.seed(42) # TODO Param.yaml
 class RNG:
-    def __init__(self):
-        self._rng = RANDOM
+    def __init__(self, seed: int = 42):
+        random = Random()
+        random.seed(seed)
+        self._rng = random
 
     def random(self) -> float:
         return float(self._rng.random())

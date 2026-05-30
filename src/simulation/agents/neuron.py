@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 # Internal State Set
 class NeuronState(str, AdaptiveAgentState):
+    """Macro health state of a neuron in the extracellular environment."""
     HEALTHY = "Healthy"
     COMPROMISED = "Compromised"
     APOPTOTIC = "Apoptotic"
@@ -19,6 +20,7 @@ class NeuronState(str, AdaptiveAgentState):
 
 # Action Set
 class NeuronAction(str, AdaptiveAgentAction):
+    """Neuron-level actions applied to the Substantia Nigra environment."""
     R_DOPAMINE = "release_dopamine"
     R_ALPHASYNUCLEIN = "release_alphasynuclein"
     DUMP_DEBRIS = "dump_debris"
@@ -28,6 +30,8 @@ class NeuronAction(str, AdaptiveAgentAction):
 # Perception
 @dataclass(frozen=True)
 class NeuronPerception(AdaptiveAgentPerception):
+    """Combined extracellular and intracellular state sensed by a neuron."""
+
     # External Perception
     position: Optional[DiscretePoint]
     nearby_alpha: float
@@ -48,6 +52,7 @@ class NeuronPerception(AdaptiveAgentPerception):
 
 @dataclass
 class NeuronConfig:
+    """Neuron thresholds, damage weights and extracellular effect rates."""
     per_radius: int
     nearby_alpha_high_threshold: float
     inflammation_high_threshold: float
@@ -195,7 +200,10 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.pending_action = NeuronAction.R_ALPHASYNUCLEIN
 
         elif self.state == NeuronState.HEALTHY:
-            if p.inflammatory_levels >= self.cfg.inflammation_high_threshold:
+            if (
+                p.inflammatory_levels >= self.cfg.inflammation_high_threshold
+                or p.extracellular_debris >= self.cfg.debris_high_threshold
+            ):
                 self.pending_action = NeuronAction.STRESS
             else:
                 self.pending_action = NeuronAction.R_DOPAMINE

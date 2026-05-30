@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 from repast4py.space import DiscretePoint
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
@@ -6,6 +6,7 @@ from src.simulation.utils import RNG
 
 # Internal State Set
 class MicrogliaState(str, AdaptiveAgentState):
+    """Functional extracellular state of a microglial agent."""
     RESTING = "Resting"
     CLEARING = "Clearing"
     ACTIVATED = "Activated"
@@ -13,6 +14,7 @@ class MicrogliaState(str, AdaptiveAgentState):
 
 # Action Set
 class MicrogliaAction(str, AdaptiveAgentAction):
+    """Actions a microglial agent can apply to the shared environment."""
     SCAN = "scan"
     CLEAR_DEBRIS = "clear_debris"
     INFLAMMATION = "release_inflammation"
@@ -20,6 +22,7 @@ class MicrogliaAction(str, AdaptiveAgentAction):
 # Set of possible perceptions
 @dataclass(frozen=True)
 class MicrogliaPerception(AdaptiveAgentPerception):
+    """Extracellular signals sensed by microglia."""
     position: Optional[DiscretePoint]
     extracellular_debris: float
     inflammation_level: float
@@ -28,6 +31,7 @@ class MicrogliaPerception(AdaptiveAgentPerception):
 #Params of the specific Microglia
 @dataclass
 class MicrogliaConfig:
+    """Microglia sensing thresholds and environmental effect rates."""
     per_radius: int
     debris_high_threshold: float
     debris_low_threshold: float
@@ -40,9 +44,10 @@ class MicrogliaConfig:
     move_probability: float
 
 class Microglia(AdaptiveAgent):
+    """Extracellular immune agent that clears debris or amplifies inflammation."""
     def __init__(self, local_id: int, rank: int, type_id: int, config: MicrogliaConfig, alpha_type_id:int):
         super().__init__(local_id, type_id, rank)
-        self.state = MicrogliaState.RESTING
+        self.state: MicrogliaState = MicrogliaState.RESTING
         self.cfg = config
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[MicrogliaPerception] = None
@@ -50,6 +55,8 @@ class Microglia(AdaptiveAgent):
         self.rng = RNG()
 
     def see(self, model) -> MicrogliaPerception:
+        """Read extracellular debris, inflammation and nearby alpha density."""
+
         env = model.environment
         position = env.position_of(self)
         if position is None:
@@ -66,8 +73,10 @@ class Microglia(AdaptiveAgent):
         self.last_perception = perception
         return perception
 
-    # In this case, the next() function is not probabilistic but deterministic
     def next(self) -> MicrogliaState:
+        """Update state deterministically from the last perception."""
+        if self.last_perception is None:
+            raise RuntimeError()
         p = self.last_perception
         if self.state == MicrogliaState.RESTING:
             if p.extracellular_debris >= self.cfg.debris_high_threshold:
@@ -85,15 +94,19 @@ class Microglia(AdaptiveAgent):
         return self.state
 
     def action(self) -> MicrogliaAction:
+        """Map the current microglial state to one extracellular action."""
         if self.state == MicrogliaState.RESTING:
             self.pending_action = MicrogliaAction.SCAN
-        if self.state == MicrogliaState.CLEARING:
+        elif self.state == MicrogliaState.CLEARING:
             self.pending_action = MicrogliaAction.CLEAR_DEBRIS
-        if self.state == MicrogliaState.ACTIVATED:
+        elif self.state == MicrogliaState.ACTIVATED:
             self.pending_action = MicrogliaAction.INFLAMMATION
         return self.pending_action
 
     def do(self, model):
+        """Apply the selected action to the Substantia Nigra environment."""
+        if self.pending_action is None:
+            return
         env = model.environment
         action = self.pending_action
 
@@ -111,5 +124,12 @@ class Microglia(AdaptiveAgent):
 
         if action == MicrogliaAction.CLEAR_DEBRIS:
             env.remove_debris(self.cfg.debris_clearance_rate)
-        if action == MicrogliaAction.INFLAMMATION:
+        elif action == MicrogliaAction.INFLAMMATION:
             env.add_inflammation(self.cfg.inflammation_release_rate)
+
+    def step(self, model):
+        """Run one extracellular microglia phase: see, next, action, do."""
+        self.see(model)
+        self.next()
+        self.action()
+        self.do(model)

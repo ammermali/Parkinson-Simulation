@@ -4,7 +4,8 @@ from src.simulation.utils import clamp, GridHabitatMixin, LocalGrid
 
 @dataclass(frozen=True)
 class SNEnvironmentConfig:
-    # Configuration derived from params.yaml
+    """Parameters controlling shared extracellular scalar dynamics."""
+
     initial_debris: float
     initial_inflammation: float
     initial_dopamine: float
@@ -15,15 +16,16 @@ class SNEnvironmentConfig:
 
 @dataclass
 class SNScalars:
-    # Scalars representing the state of the neuron
-    extracellular_debris: float # amount of extracellular debris
-    inflammation_level: float # level of inflammation
-    dopamine_output: float # amount of the dopamine released in the Substantia Nigra
+    """Current extracellular state of the Substantia Nigra."""
+
+    extracellular_debris: float
+    inflammation_level: float
+    dopamine_output: float
 
 
 @dataclass
 class SNEffects:
-    # Effects of the agents in the environmental scalars for tick
+    """Buffered extracellular effects accumulated during one tick."""
     debris_added: float = 0.0
     debris_removed: float = 0.0
     inflammation_added: float = 0.0
@@ -32,7 +34,7 @@ class SNEffects:
 
 
 class SubstantiaNigra(GridHabitatMixin):
-
+    """Shared extracellular habitat and scalar buffer for the simulation."""
     def __init__(self, grid, config: SNEnvironmentConfig):
         self.grid = LocalGrid(repast_grid=grid)
         self.config = config
@@ -47,9 +49,11 @@ class SubstantiaNigra(GridHabitatMixin):
     # TICK CYCLE
 
     def begin_tick(self):
+        """Reset extracellular effect buffers for a new tick."""
         self.effects = SNEffects()
 
     def commit_effects(self, max_possible_dopamine: float):
+        """Apply buffered effects, decay and dopamine smoothing to scalars."""
         cfg = self.config
         old = self.scalars
         eff = self.effects
@@ -74,16 +78,21 @@ class SubstantiaNigra(GridHabitatMixin):
     # AGENTS EFFECTS
 
     def add_debris(self, amount: float):
+        """Buffer debris released into the extracellular environment."""
         self.effects.debris_added += amount
 
     def remove_debris(self, amount: float):
+        """Buffer extracellular debris removal."""
         self.effects.debris_removed += amount
 
     def add_inflammation(self, amount: float):
+        """Buffer inflammatory signal added to the environment."""
         self.effects.inflammation_added += amount
 
     def remove_inflammation(self, amount: float):
+        """Buffer inflammatory signal removal from the environment."""
         self.effects.inflammation_removed += amount
 
     def release_dopamine(self, amount: float):
+        """Buffer dopamine released by neurons this tick."""
         self.effects.dopamine_released += amount

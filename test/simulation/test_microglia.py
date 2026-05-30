@@ -23,14 +23,13 @@ def make_config(move_probability: float = 1.0) -> MicrogliaConfig:
         nearby_alpha_low_threshold=0.2,
         debris_clearance_rate=0.10,
         inflammation_release_rate=0.15,
-        move_probability=move_probability,
+        move_probability=move_probability
     )
 
 
 class TestMicroglia:
     def test_initial_state_is_resting(self):
         microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(), alpha_type_id=9)
-
         assert microglia.state == MicrogliaState.RESTING
         assert microglia.pending_action is None
         assert microglia.last_perception is None
@@ -38,9 +37,7 @@ class TestMicroglia:
     def test_see_sets_nearby_alpha_to_zero_when_position_is_missing(self):
         microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(), alpha_type_id=9)
         environment = TestSubstantiaNigraLikeEnvironment(position=None, debris=0.4, inflammation=0.3)
-
         microglia.see(SimpleNamespace(environment=environment))
-
         assert microglia.last_perception.position is None
         assert microglia.last_perception.nearby_alpha == 0.0
         assert microglia.last_perception.extracellular_debris == 0.4
@@ -85,7 +82,7 @@ class TestMicroglia:
         [
             (MicrogliaState.RESTING, MicrogliaAction.SCAN),
             (MicrogliaState.CLEARING, MicrogliaAction.CLEAR_DEBRIS),
-            (MicrogliaState.ACTIVATED, MicrogliaAction.INFLAMMATION),
+            (MicrogliaState.ACTIVATED, MicrogliaAction.INFLAMMATION)
         ],
     )
     def test_action_maps_state_to_action(self, state, expected_action):
@@ -110,18 +107,20 @@ class TestMicroglia:
 
     def test_do_scan_moves_when_rng_is_within_move_probability(self):
         microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(move_probability=1.0), alpha_type_id=9)
+        microglia.rng = TestRng(random_value=0.0, choice_index=1)
         position = DiscretePoint(1, 1)
         environment = TestSubstantiaNigraLikeEnvironment(position=position)
         microglia.pending_action = MicrogliaAction.SCAN
-        microglia.do(SimpleNamespace(environment=environment, rng=TestRng(random_value=0.0, choice_index=1)))
+        microglia.do(SimpleNamespace(environment=environment))
         assert environment.moves == [(microglia, DiscretePoint(2, 1))]
 
     def test_do_scan_does_not_move_when_rng_exceeds_move_probability(self):
         microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(move_probability=0.0), alpha_type_id=9)
+        microglia.rng = TestRng(random_value=1.0)
         position = DiscretePoint(1, 1)
         environment = TestSubstantiaNigraLikeEnvironment(position=position)
         microglia.pending_action = MicrogliaAction.SCAN
-        microglia.do(SimpleNamespace(environment=environment, rng=TestRng(random_value=1.0)))
+        microglia.do(SimpleNamespace(environment=environment))
         assert environment.moves == []
 
     def test_step_runs_see_next_action_do(self):
@@ -129,11 +128,9 @@ class TestMicroglia:
         environment = TestSubstantiaNigraLikeEnvironment(
             position=DiscretePoint(1, 1),
             debris=0.7,
-            inflammation=0.0,
+            inflammation=0.0
         )
-
         microglia.step(SimpleNamespace(environment=environment))
-
         assert microglia.state == MicrogliaState.CLEARING
         assert microglia.pending_action == MicrogliaAction.CLEAR_DEBRIS
         assert environment.removed_debris == pytest.approx(0.10)

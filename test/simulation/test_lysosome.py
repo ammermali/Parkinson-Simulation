@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import replace
 from repast4py.space import DiscretePoint
-from testhelpers import TestAgent, TestRng, import_any
+from testhelpers import TestAgent, TestRng, import_any, make_alpha_config, make_lysosome_config, make_mitochondrion_config
 
 alpha_module = import_any("src.simulation.agents.alphasynuclein")
 AlphaSynuclein = alpha_module.AlphaSynuclein
@@ -44,7 +44,7 @@ def make_config() -> NeuronConfig:
         stress_inflammation_release_rate=0.15,
         debris_release_rate=0.25,
         alpha_absorption_rate=0.1,
-        alpha_release_amount=0.05,
+        alpha_release_amount=0.05
     )
 
 
@@ -53,13 +53,13 @@ def make_neuron() -> Neuron:
 
 
 def make_lysosome(neuron: Neuron, **kwargs) -> Lysosome:
-    config = replace(LysosomeConfig(), **kwargs)
+    config = replace(make_lysosome_config(), **kwargs)
     lysosome = Lysosome(
         local_id=50,
         rank=0,
         type_id=60,
         owner_neuron=neuron,
-        config=config,
+        config=config
     )
     lysosome.state = LysosomeState.ACTIVE
     lysosome.rng = TestRng(random_value=0.0)
@@ -72,7 +72,7 @@ def make_alpha(local_id: int, owner_neuron: Neuron) -> AlphaSynuclein:
         local_id=local_id,
         rank=0,
         type_id=99,
-        config=AlphaSynucleinConfig(),
+        config=make_alpha_config(),
         compartment=AlphaSynucleinCompartment.INTRACELLULAR,
         owner_neuron=owner_neuron
     )
@@ -86,7 +86,7 @@ def make_mitochondrion(owner_neuron: Neuron) -> Mitochondrion:
         local_id=30,
         rank=0,
         type_id=40,
-        config=MitochondrionConfig(),
+        config=make_mitochondrion_config(),
         owner_neuron=owner_neuron
     )
     mitochondrion.state = MitochondrionState.DAMAGED
@@ -115,7 +115,7 @@ class TestLysosome:
             aggregate_degradation_probability_base=0.2,
             aggregate_degradation_probability_per_member=0.1,
             aggregate_overwhelm_probability_base=0.0,
-            aggregate_overwhelm_probability_per_member=0.0,
+            aggregate_overwhelm_probability_per_member=0.0
         )
         lysosome.rng = TestRng(random_value=0.9)
         aggregate = AlphaAggregate(
@@ -132,7 +132,6 @@ class TestLysosome:
         neuron.assign_degradation_target(lysosome, aggregate)
         lysosome.pending_action = LysosomeAction.DEGRADE
         lysosome.do(model=None)
-
         assert lysosome.pr_degradation_success(aggregate) == pytest.approx(0.5)
         assert aggregate in neuron.grid.agent_registry
         assert neuron.target_for(lysosome) is None
@@ -147,7 +146,7 @@ class TestLysosome:
             aggregate_degradation_probability_base=1.0,
             aggregate_degradation_probability_per_member=0.0,
             aggregate_overwhelm_probability_base=0.0,
-            aggregate_overwhelm_probability_per_member=0.0,
+            aggregate_overwhelm_probability_per_member=0.0
         )
         aggregate = AlphaAggregate(
             local_id=100,
@@ -161,10 +160,8 @@ class TestLysosome:
         neuron.add_agent(aggregate, DiscretePoint(1, 0))
         neuron.register_degradation_target(aggregate)
         neuron.assign_degradation_target(lysosome, aggregate)
-
         lysosome.pending_action = LysosomeAction.DEGRADE
         lysosome.do(model=None)
-
         assert lysosome.degradation_ticks_remaining == 2
         assert neuron.target_for(lysosome) is aggregate
         assert aggregate in neuron.grid.agent_registry
@@ -177,7 +174,7 @@ class TestLysosome:
             aggregate_degradation_probability_base=1.0,
             aggregate_degradation_probability_per_member=0.0,
             aggregate_overwhelm_probability_base=0.0,
-            aggregate_overwhelm_probability_per_member=0.0,
+            aggregate_overwhelm_probability_per_member=0.0
         )
         point = DiscretePoint(1, 1)
         members = [make_alpha(1, neuron), make_alpha(2, neuron)]
@@ -185,10 +182,8 @@ class TestLysosome:
             neuron.add_agent(alpha, point)
         aggregate = neuron.aggregate_registry.create_aggregate(neuron, point, members)
         neuron.assign_degradation_target(lysosome, aggregate)
-
         lysosome.pending_action = LysosomeAction.DEGRADE
         lysosome.do(model=None)
-
         assert aggregate not in neuron.grid.agent_registry
         assert neuron.target_for(lysosome) is None
         assert neuron.aggregate_registry.aggregate_for(aggregate.aggregate_id) is None
@@ -199,16 +194,14 @@ class TestLysosome:
         lysosome = make_lysosome(
             neuron,
             mitochondrion_repair_ticks=1,
-            mitochondrion_repair_probability=1.0,
+            mitochondrion_repair_probability=1.0
         )
         mitochondrion = make_mitochondrion(neuron)
         neuron.add_agent(mitochondrion, DiscretePoint(1, 0))
         neuron.register_degradation_target(mitochondrion)
         neuron.assign_degradation_target(lysosome, mitochondrion)
-
         lysosome.pending_action = LysosomeAction.DEGRADE
         lysosome.do(model=None)
-
         assert mitochondrion in neuron.grid.agent_registry
         assert mitochondrion.state == MitochondrionState.HEALTHY
         assert neuron.target_for(lysosome) is None
@@ -219,16 +212,14 @@ class TestLysosome:
         lysosome = make_lysosome(
             neuron,
             mitochondrion_repair_ticks=1,
-            mitochondrion_repair_probability=0.0,
+            mitochondrion_repair_probability=0.0
         )
         mitochondrion = make_mitochondrion(neuron)
         neuron.add_agent(mitochondrion, DiscretePoint(1, 0))
         neuron.register_degradation_target(mitochondrion)
         neuron.assign_degradation_target(lysosome, mitochondrion)
-
         lysosome.pending_action = LysosomeAction.DEGRADE
         lysosome.do(model=None)
-
         assert mitochondrion in neuron.grid.agent_registry
         assert mitochondrion.state == MitochondrionState.DAMAGED
         assert neuron.target_for(lysosome) is None
@@ -242,7 +233,7 @@ class TestLysosome:
             aggregate_degradation_probability_base=1.0,
             aggregate_degradation_probability_per_member=0.0,
             aggregate_overwhelm_probability_base=0.0,
-            aggregate_overwhelm_probability_per_member=0.02,
+            aggregate_overwhelm_probability_per_member=0.02
         )
         lysosome.rng = TestRng(random_value=0.05)
         aggregate = AlphaAggregate(
@@ -252,15 +243,13 @@ class TestLysosome:
             aggregate_id=1,
             member_ids={1, 2, 3},
             state=AggregateState.OLIGOMER,
-            owner_neuron=neuron,
+            owner_neuron=neuron
         )
         neuron.add_agent(aggregate, DiscretePoint(1, 0))
         neuron.register_degradation_target(aggregate)
         neuron.assign_degradation_target(lysosome, aggregate)
-
         lysosome.pending_action = LysosomeAction.DEGRADE
         lysosome.do(model=None)
-
         assert lysosome.pr_overwhelmed_by_target(aggregate) == pytest.approx(0.06)
         assert lysosome.state == LysosomeState.OVERWHELMED
         assert aggregate in neuron.available_degradation_targets()
@@ -275,7 +264,7 @@ class TestLysosome:
             aggregate_id=1,
             member_ids={1, 2, 3},
             state=AggregateState.LEWY_BODY,
-            owner_neuron=neuron,
+            owner_neuron=neuron
         )
         neuron.add_agent(lewy_body, DiscretePoint(1, 0))
         neuron.register_degradation_target(lewy_body)

@@ -1,6 +1,6 @@
 from repast4py.space import DiscretePoint
 
-from testhelpers import TestRng, import_any
+from testhelpers import TestRng, import_any, make_alpha_config
 
 
 alpha_module = import_any("src.simulation.agents.alphasynuclein")
@@ -50,7 +50,7 @@ def make_alpha(local_id: int, owner_neuron: Neuron) -> AlphaSynuclein:
         local_id=local_id,
         rank=0,
         type_id=99,
-        config=AlphaSynucleinConfig(),
+        config=make_alpha_config(),
         compartment=AlphaSynucleinCompartment.INTRACELLULAR,
         owner_neuron=owner_neuron,
     )

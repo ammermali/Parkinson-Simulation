@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import pytest
 from repast4py.space import DiscretePoint
-from testhelpers import TestAgent, TestAggregateAgent, TestRng, TestSubstantiaNigraLikeEnvironment, import_any
+from testhelpers import TestAgent, TestRng, TestSubstantiaNigraLikeEnvironment, import_any
 
 
 neuron_module = import_any("src.simulation.agents.neuron", "neuron")
@@ -12,6 +12,10 @@ NeuronInternalEffects = neuron_module.NeuronInternalEffects
 NeuronPerception = neuron_module.NeuronPerception
 NeuronState = neuron_module.NeuronState
 AdaptiveAgent = neuron_module.AdaptiveAgent
+
+aggregate_module = import_any("src.simulation.agents.aggregate")
+AlphaAggregate = aggregate_module.AlphaAggregate
+AggregateState = aggregate_module.AggregateState
 
 
 def make_config() -> NeuronConfig:
@@ -40,6 +44,17 @@ def make_config() -> NeuronConfig:
 
 def make_neuron(alpha_type_id: int = 99) -> Neuron:
     return Neuron(local_id=1, rank=0, type_id=10, config=make_config(), alpha_type_id=alpha_type_id)
+
+
+def make_aggregate(local_id: int) -> AlphaAggregate:
+    return AlphaAggregate(
+        local_id=local_id,
+        rank=0,
+        type_id=99,
+        aggregate_id=local_id,
+        member_ids={local_id},
+        state=AggregateState.LEWY_BODY,
+    )
 
 
 class DebrisAgent:
@@ -124,7 +139,7 @@ class TestNeuron:
         neuron.internal_scalars.intracellular_debris = 0.25
         for uid in range(50):
             neuron.add_agent(
-                TestAggregateAgent(aggregate_weight=1.0, uid=uid),
+                make_aggregate(uid),
                 DiscretePoint(uid % 10, uid // 10),
             )
         assert neuron.compute_internal_damage() == pytest.approx(0.65)
@@ -133,21 +148,21 @@ class TestNeuron:
 
     def test_compute_alpha_load_counts_internal_alpha_agents_over_grid_capacity(self):
         neuron = make_neuron(alpha_type_id=99)
-        neuron.add_agent(TestAggregateAgent(aggregate_weight=1.0, uid=1), DiscretePoint(0, 0))
-        neuron.add_agent(TestAggregateAgent(aggregate_weight=1.0, uid=2), DiscretePoint(1, 0))
-        neuron.add_agent(TestAggregateAgent(aggregate_weight=0.0, ptype=7, uid=3), DiscretePoint(2, 0))
+        neuron.add_agent(make_aggregate(1), DiscretePoint(0, 0))
+        neuron.add_agent(make_aggregate(2), DiscretePoint(1, 0))
+        neuron.add_agent(TestAgent(ptype=7, uid=3), DiscretePoint(2, 0))
 
         assert neuron.compute_alpha_load() == pytest.approx(2 / 100)
 
     def test_local_aggregate_density_is_derived_from_grid_neighborhood(self):
         neuron = make_neuron(alpha_type_id=99)
         center = DiscretePoint(1, 1)
-        neuron.add_agent(TestAggregateAgent(aggregate_weight=1.0, uid=1), center)
-        neuron.add_agent(TestAggregateAgent(aggregate_weight=0.5, uid=2), DiscretePoint(1, 2))
+        neuron.add_agent(make_aggregate(1), center)
+        neuron.add_agent(make_aggregate(2), DiscretePoint(1, 2))
 
         density = neuron.local_aggregate_density_at(center, radius=1, include_center=True)
 
-        assert density == pytest.approx(1.5 / 9)
+        assert density == pytest.approx(2 / 9)
 
     def test_local_debris_density_is_derived_from_grid_neighborhood(self):
         neuron = make_neuron(alpha_type_id=99)
@@ -267,6 +282,8 @@ class TestNeuron:
 
     def test_commit_effects_adds_internal_buffers_and_clamps(self):
         neuron = make_neuron()
+        neuron.internal_cfg.oxidative_stress_decay = 0.0
+        neuron.internal_cfg.intracellular_debris_decay = 0.0
         neuron.internal_scalars.oxidative_stress = 0.8
         neuron.internal_scalars.intracellular_debris = 0.1
         neuron.add_oxidative_stress(0.4)
@@ -302,9 +319,7 @@ class TestNeuron:
         neuron.add_agent(lysosome, DiscretePoint(0, 0))
         neuron.add_agent(target, DiscretePoint(1, 0))
         neuron.assign_degradation_target(lysosome, target)
-
         neuron.clear_degradation_assignment(lysosome)
-
         assert neuron.target_for(lysosome) is None
         assert neuron.is_target_assigned(target) is False
 
@@ -315,9 +330,7 @@ class TestNeuron:
         neuron.add_agent(lysosome, DiscretePoint(0, 0))
         neuron.add_agent(target, DiscretePoint(1, 0))
         neuron.assign_degradation_target(lysosome, target)
-
         neuron.remove_agent(target)
-
         assert neuron.target_for(lysosome) is None
         assert neuron.is_target_assigned(target) is False
         assert target not in neuron.grid.agent_registry
@@ -326,9 +339,7 @@ class TestNeuron:
         neuron = make_neuron()
         agent = TestAgent(ptype=7, uid=1)
         neuron.add_agent(agent, DiscretePoint(0, 0))
-
         neuron.remove_agent(agent)
-
         assert agent not in neuron.grid.agent_registry
 
     def test_step_runs_internal_agents_in_phases_before_neuron_step(self):
@@ -339,9 +350,7 @@ class TestNeuron:
         neuron.add_agent(first, DiscretePoint(0, 0))
         neuron.add_agent(second, DiscretePoint(1, 0))
         environment = TestSubstantiaNigraLikeEnvironment(position=DiscretePoint(2, 2))
-
         neuron.step(SimpleNamespace(environment=environment, rng=TestRng()))
-
         assert log == [
             "first:see",
             "second:see",
@@ -350,5 +359,5 @@ class TestNeuron:
             "first:action",
             "second:action",
             "first:do",
-            "second:do",
+            "second:do"
         ]

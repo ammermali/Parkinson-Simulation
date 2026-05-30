@@ -1,5 +1,5 @@
 import importlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from repast4py.space import DiscretePoint
 
@@ -36,6 +36,60 @@ class TestRng:
 
     def choice(self, values):
         return list(values)[self.choice_index]
+
+
+def make_alpha_config(**overrides):
+    alpha_module = import_any("src.simulation.agents.alphasynuclein")
+    config = alpha_module.AlphaSynucleinConfig(
+        perception_radius=1,
+        move_radius=1,
+        move_probability=0.5,
+        oxidative_stress_high_threshold=0.6,
+    )
+    return replace(config, **overrides)
+
+
+def make_mitochondrion_config(**overrides):
+    mitochondrion_module = import_any("src.simulation.agents.mitochondrion")
+    config = mitochondrion_module.MitochondrionConfig(
+        perception_radius=1,
+        energy_demand_high_threshold=0.7,
+        oxidative_stress_high_threshold=0.7,
+        oxidative_stress_low_threshold=0.3,
+        aggregate_density_high_threshold=0.7,
+        aggregate_density_low_threshold=0.3,
+        debris_density_high_threshold=0.7,
+        debris_density_low_threshold=0.3,
+        irreversible_damage_threshold=0.85,
+        stress_release_rate=0.03,
+        damage_stress_release_rate=0.07,
+        debris_release_rate=0.04,
+        fusion_stress_reduction_rate=0.02,
+        fusion_debris_reduction_rate=0.01,
+        healthy_energy_demand_reduction_rate=0.04,
+        consumed_energy_demand_reduction_rate=0.01,
+        high_demand_reduction_multiplier=1.5,
+    )
+    return replace(config, **overrides)
+
+
+def make_lysosome_config(**overrides):
+    lysosome_module = import_any("src.simulation.agents.lysosome")
+    config = lysosome_module.LysosomeConfig(
+        perception_radius=1,
+        move_radius=1,
+        base_degradation_probability=0.8,
+        protein_degradation_ticks=1,
+        mitochondrion_repair_ticks=2,
+        mitochondrion_repair_probability=0.8,
+        aggregate_degradation_ticks_base=1,
+        aggregate_degradation_ticks_per_member=1,
+        aggregate_degradation_probability_base=0.35,
+        aggregate_degradation_probability_per_member=0.05,
+        aggregate_overwhelm_probability_base=0.02,
+        aggregate_overwhelm_probability_per_member=0.01,
+    )
+    return replace(config, **overrides)
 
 
 class TestBounds:

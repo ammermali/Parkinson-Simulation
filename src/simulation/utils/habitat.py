@@ -41,6 +41,10 @@ class GridHabitatMixin:
 
 
 class InternalHabitatMixin(GridHabitatMixin):
+    """Grid-backed habitat API expected by intracellular agents.
+    Implementers expose global neuron scalars, local derived densities and the
+    shared degradation buffers used by lysosomes.
+    """
     def oxidative_stress_at(self, position: Optional[DiscretePoint] = None) -> float:
         raise NotImplementedError
 
@@ -56,19 +60,25 @@ class InternalHabitatMixin(GridHabitatMixin):
     def add_intracellular_debris(self, amount: float):
         raise NotImplementedError
 
+    def add_energy_demand(self, amount: float):
+        raise NotImplementedError
+
     def register_degradation_target(self, agent):
         raise NotImplementedError
 
     def available_degradation_targets(self) -> list:
         raise NotImplementedError
 
-    def assign_degradation_target(self, lysosome, target):
+    def assign_degradation_target(self, lysosome, target) -> bool:
         raise NotImplementedError
 
     def target_for(self, lysosome):
         raise NotImplementedError
 
-    def clear_degradation_assignment(self, lysosome):
+    def clear_degradation_assignment(self, lysosome, requeue_target: bool = False):
+        raise NotImplementedError
+
+    def unregister_degradation_target(self, target):
         raise NotImplementedError
 
     def is_target_assigned(self, target) -> bool:

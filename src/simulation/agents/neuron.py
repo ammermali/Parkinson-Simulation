@@ -70,8 +70,11 @@ class NeuronConfig:
 
 @dataclass
 class NeuronInternalConfig:
+    """Internal habitat constants for neuronal scalar dynamics."""
     width: int = 10
     height: int = 10
+    energy_demand_baseline: float = 0.5
+    energy_demand_recovery_rate: float = 0.02
     oxidative_stress_decay: float = 0.01
     intracellular_debris_decay: float = 0.005
     internal_damage_oxidative_weight: float = 0.4
@@ -80,14 +83,18 @@ class NeuronInternalConfig:
 
 @dataclass
 class NeuronInternalScalars:
+    """Current global intracellular scalar values owned by the neuron."""
     oxidative_stress: float = 0.0
     intracellular_debris: float = 0.0
     energy_demand: float = 0.5
 
 @dataclass
 class NeuronInternalEffects:
+    """Buffered intracellular effects accumulated during one simulation tick."""
+
     oxidative_stress_added: float = 0.0
     debris_added: float = 0.0
+    energy_demand_added: float = 0.0
 
 class Neuron(InternalHabitatMixin, AdaptiveAgent):
     """Neuron macro-agent with an intracellular habitat.
@@ -247,11 +254,14 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.internal_effects = NeuronInternalEffects()
 
     def commit_effects(self):
+        """Apply buffered intracellular effects at the end of the tick."""
         cfg = self.internal_cfg
         s = self.internal_scalars
         e = self.internal_effects
         s.oxidative_stress = clamp(s.oxidative_stress + e.oxidative_stress_added - cfg.oxidative_stress_decay * s.oxidative_stress)
         s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added - cfg.intracellular_debris_decay * s.intracellular_debris)
+        baseline_pull = cfg.energy_demand_recovery_rate * (cfg.energy_demand_baseline - s.energy_demand)
+        s.energy_demand = clamp(s.energy_demand + e.energy_demand_added + baseline_pull)
 
     def _compute_external_stress(self, perception: NeuronPerception) -> float:
         return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
@@ -300,7 +310,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def assign_degradation_target(self, lysosome: AdaptiveAgent, target: AdaptiveAgent) -> bool:
         """Assign one available target to one lysosome.
-
         Returns True when the assignment is accepted. A target can only be
         assigned to one lysosome at a time; if the lysosome already had a
         different target, that old target is returned to the available buffer.
@@ -374,6 +383,10 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def add_intracellular_debris(self, amount: float):
         self.internal_effects.debris_added += amount
+
+    def add_energy_demand(self, amount: float):
+        """Change unmet cellular energy demand through the effect buffer."""
+        self.internal_effects.energy_demand_added += amount
 
     def energy_demand_at(self, position: Optional[DiscretePoint] = None) -> float:
         return self.internal_scalars.energy_demand

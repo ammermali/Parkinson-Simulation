@@ -4,6 +4,7 @@ from repast4py.space import DiscretePoint
 from typing import Optional, List
 from src.simulation.agents.aggregate import AlphaAggregate, AggregateState
 from src.simulation.agents.alphasynuclein import AlphaSynuclein
+from src.simulation.agents.mitochondrion import Mitochondrion
 from src.simulation.utils import clamp, RNG
 
 # Internal State Set
@@ -38,8 +39,9 @@ class Lysosome(AdaptiveAgent):
     A lysosome does not discover all degradable agents directly. Instead,
     damaged proteins, aggregates and organelles register in the owning neuron;
     the lysosome claims one available target and repeatedly attempts to degrade
-    it. Aggregate degradation becomes harder with aggregate size, while a Lewy
-    body overwhelms the lysosome and permanently stops its activity.
+    it. Proteins and mitochondria use configurable repair/degradation durations;
+    aggregate duration and risk are derived from aggregate size. Lewy bodies
+    always overwhelm the lysosome.
     """
     def __init__(
             self,
@@ -50,7 +52,15 @@ class Lysosome(AdaptiveAgent):
             perception_radius: int = 1,
             move_radius: int = 1,
             base_degradation_probability: float = 0.8,
-            aggregate_size_penalty: float = 0.25
+            protein_degradation_ticks: int = 1,
+            mitochondrion_repair_ticks: int = 2,
+            mitochondrion_repair_probability: float = 0.8,
+            aggregate_degradation_ticks_base: int = 1,
+            aggregate_degradation_ticks_per_member: int = 1,
+            aggregate_degradation_probability_base: float = 0.35,
+            aggregate_degradation_probability_per_member: float = 0.05,
+            aggregate_overwhelm_probability_base: float = 0.02,
+            aggregate_overwhelm_probability_per_member: float = 0.01,
     ):
         super().__init__(local_id, type_id, rank)
 
@@ -59,8 +69,18 @@ class Lysosome(AdaptiveAgent):
         self.perception_radius = perception_radius
         self.move_radius = move_radius
         self.base_degradation_probability = clamp(base_degradation_probability)
-        self.aggregate_size_penalty = max(0.0, aggregate_size_penalty)
+        self.protein_degradation_ticks = max(1, protein_degradation_ticks)
+        self.mitochondrion_repair_ticks = max(1, mitochondrion_repair_ticks)
+        self.mitochondrion_repair_probability = clamp(mitochondrion_repair_probability)
+        self.aggregate_degradation_ticks_base = max(1, aggregate_degradation_ticks_base)
+        self.aggregate_degradation_ticks_per_member = max(0, aggregate_degradation_ticks_per_member)
+        self.aggregate_degradation_probability_base = clamp(aggregate_degradation_probability_base)
+        self.aggregate_degradation_probability_per_member = max(0.0, aggregate_degradation_probability_per_member)
+        self.aggregate_overwhelm_probability_base = clamp(aggregate_overwhelm_probability_base)
+        self.aggregate_overwhelm_probability_per_member = max(0.0, aggregate_overwhelm_probability_per_member)
         self.target: Optional[AdaptiveAgent] = None
+        self._work_target: Optional[AdaptiveAgent] = None
+        self.degradation_ticks_remaining: int = 0
         self.last_perception: Optional[LysosomePerception] = None
         self.pending_action: Optional[LysosomeAction] = None
         self.last_transition: tuple[LysosomeState, LysosomeState] = (
@@ -117,8 +137,7 @@ class Lysosome(AdaptiveAgent):
             })
         elif self.state == LysosomeState.ACTIVE:
             self.state = self._sample_with_stay({
-                LysosomeState.INACTIVE: self.pr_active_to_inactive(p),
-                LysosomeState.OVERWHELMED: self.pr_active_to_overwhelmed(p)
+                LysosomeState.INACTIVE: self.pr_active_to_inactive(p)
             })
         elif self.state == LysosomeState.OVERWHELMED:
             self.state = LysosomeState.OVERWHELMED
@@ -165,18 +184,6 @@ class Lysosome(AdaptiveAgent):
         task_pressure = 1.0 if p.task is not None else 0.0
         return clamp(
             (1.0 - task_pressure) * (1.0 - p.target_pressure) * (1.0 - p.local_aggregate_density)
-        )
-
-    def pr_overwhelmed_to_active(self, p: LysosomePerception) -> float:
-        """Overwhelmed lysosomes are terminally non-functional for now."""
-
-        return 0.0
-
-    def pr_active_to_overwhelmed(self, p: LysosomePerception) -> float:
-        """Background overwhelm risk from crowded pathological neighborhoods."""
-
-        return clamp(
-            p.target_pressure * p.local_aggregate_density
         )
 
     def _sample_with_stay(
@@ -231,34 +238,86 @@ class Lysosome(AdaptiveAgent):
 
     def _degrade_target(self, habitat):
         """Attempt to degrade the assigned target.
-        Lewy bodies are treated as too large and organized for the lysosome to
-        clear; contact with one overwhelms the lysosome. Other aggregates use a
-        size-sensitive success probability."""
+        Work can span multiple ticks. Once enough work has accumulated, the
+        target has mutually exclusive outcomes: overwhelm, successful cleanup,
+        or failed attempt with the target returned to the neuron's pool.
+        """
         target = habitat.target_for(self)
         if target is None:
             self.target = None
+            self._reset_degradation_work()
             return
         if habitat.position_of(target) is None:
             habitat.clear_degradation_assignment(self)
             self.target = None
+            self._reset_degradation_work()
             return
         if self._is_lewy_body(target):
             self._become_overwhelmed(habitat, target)
             return
-        if self.rng.random() > self.pr_degradation_success(target):
+        if not self._advance_degradation_work(target):
             self.target = target
             return
+        self._resolve_degradation_attempt(habitat, target)
+
+    def _resolve_degradation_attempt(self, habitat, target: AdaptiveAgent):
+        overwhelm_probability = self.pr_overwhelmed_by_target(target)
+        success_probability = min(self.pr_degradation_success(target), 1.0 - overwhelm_probability)
+        draw = self.rng.random()
+        if draw < overwhelm_probability:
+            self._become_overwhelmed(habitat, target)
+            return
+        if draw < overwhelm_probability + success_probability:
+            self._complete_degradation(habitat, target)
+            return
+        self._fail_degradation(habitat, target)
+
+    def _complete_degradation(self, habitat, target: AdaptiveAgent):
         if isinstance(target, AlphaAggregate):
             habitat.remove_agent(target)
-            self.target = None
-            return
-        if isinstance(target, AlphaSynuclein):
+        elif isinstance(target, Mitochondrion):
+            target.repair_by_lysosome()
+            habitat.unregister_degradation_target(target)
+        elif isinstance(target, AlphaSynuclein):
             target.mark_cleared()
-            habitat.clear_degradation_assignment(self)
-        # TODO add cases for mitochondrion
+            habitat.unregister_degradation_target(target)
         else:
             habitat.remove_agent(target)
         self.target = None
+        self._reset_degradation_work()
+
+    def _fail_degradation(self, habitat, target: AdaptiveAgent):
+        habitat.clear_degradation_assignment(self, requeue_target=True)
+        self.target = None
+        self._reset_degradation_work()
+
+    def _advance_degradation_work(self, target: AdaptiveAgent) -> bool:
+        self._ensure_degradation_work(target)
+        if self.degradation_ticks_remaining > 1:
+            self.degradation_ticks_remaining -= 1
+            return False
+        self.degradation_ticks_remaining = 0
+        return True
+
+    def _ensure_degradation_work(self, target: AdaptiveAgent):
+        if self._work_target is target:
+            return
+        self._work_target = target
+        self.degradation_ticks_remaining = self.degradation_ticks_required(target)
+
+    def _reset_degradation_work(self):
+        self._work_target = None
+        self.degradation_ticks_remaining = 0
+
+    def degradation_ticks_required(self, target: AdaptiveAgent) -> int:
+        """Ticks needed before a degradation attempt can be resolved."""
+        if isinstance(target, AlphaAggregate):
+            return self.aggregate_degradation_ticks_base + self.aggregate_degradation_ticks_per_member * max(0, target.size - 1)
+        if isinstance(target, Mitochondrion):
+            return self.mitochondrion_repair_ticks
+        if isinstance(target, AlphaSynuclein):
+            return self.protein_degradation_ticks
+        return 1
 
     def _scan(self, habitat):
         """Move locally while searching for new degradation work."""
@@ -274,9 +333,24 @@ class Lysosome(AdaptiveAgent):
     def pr_degradation_success(self, target: AdaptiveAgent) -> float:
         """Probability that one degradation attempt clears the assigned target."""
         if isinstance(target, AlphaAggregate):
-            size_penalty = 1.0 + self.aggregate_size_penalty * max(0, target.size - 1)
-            return clamp(self.base_degradation_probability / size_penalty)
+            return clamp(
+                self.aggregate_degradation_probability_base
+                + self.aggregate_degradation_probability_per_member * target.size
+            )
+        if isinstance(target, Mitochondrion):
+            return self.mitochondrion_repair_probability
         return self.base_degradation_probability
+
+    def pr_overwhelmed_by_target(self, target: AdaptiveAgent) -> float:
+        """Probability that the target disables the lysosome this attempt."""
+        if self._is_lewy_body(target):
+            return 1.0
+        if isinstance(target, AlphaAggregate):
+            return clamp(
+                self.aggregate_overwhelm_probability_base
+                + self.aggregate_overwhelm_probability_per_member * target.size
+            )
+        return 0.0
 
     def _is_lewy_body(self, target: AdaptiveAgent) -> bool:
         return isinstance(target, AlphaAggregate) and target.state == AggregateState.LEWY_BODY
@@ -286,4 +360,5 @@ class Lysosome(AdaptiveAgent):
         self.state = LysosomeState.OVERWHELMED
         self.pending_action = LysosomeAction.IDLE
         self.target = None
+        self._reset_degradation_work()
         habitat.clear_degradation_assignment(self, requeue_target=True)

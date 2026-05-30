@@ -1,14 +1,10 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
-
+from typing import Iterable, Optional, TYPE_CHECKING
 from repast4py.space import DiscretePoint
-
-from src.simulation.agents.adaptiveagent import (
-    AdaptiveAgent,
-    AdaptiveAgentAction,
-    AdaptiveAgentPerception,
-    AdaptiveAgentState,
-)
+from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentAction, AdaptiveAgentPerception, AdaptiveAgentState
+if TYPE_CHECKING:
+    from src.simulation.agents.neuron import Neuron
 
 
 class AggregateState(str, AdaptiveAgentState):

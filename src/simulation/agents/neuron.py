@@ -1,10 +1,13 @@
 from typing import Optional
 from repast4py.space import DiscretePoint
+
+from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.utils import InternalHabitatMixin
 from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
+from src.simulation.agents.aggregate_registry import AggregateRegistry
+from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from dataclasses import dataclass
-
 
 # Internal State Set
 class NeuronState(str, AdaptiveAgentState):
@@ -118,6 +121,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         # Lysosome targetting bridging
         self.degradation_targets: list[AdaptiveAgent] = []
         self.degradation_assignment: dict[AdaptiveAgent, AdaptiveAgent] = {}
+        self.aggregate_registry = AggregateRegistry()
 
     def see(self, model) -> NeuronPerception:
         env = model.environment
@@ -214,9 +218,15 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             agent.see(model)
         for agent in internal_agents:
             agent.next()
-        for agent in internal_agents:
+        self.aggregate_registry.process(self)
+        active_agents = [
+            agent
+            for agent in internal_agents
+            if self.position_of(agent) is not None
+        ]
+        for agent in active_agents:
             agent.action()
-        for agent in internal_agents:
+        for agent in active_agents:
             agent.do(model)
         self.commit_effects()
         self.see(model)
@@ -325,15 +335,16 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def remove_agent(self, agent: AdaptiveAgent):
         self.grid.remove_agent(agent)
+        self.aggregate_registry.remove(agent)
         self.clear_degradation_assignment(agent)
         self.clear_assignments_for_target(agent)
         if agent in self.degradation_targets:
             self.degradation_targets.remove(agent)
 
     def aggregate_weight(self, agent: AdaptiveAgent) -> float:
-        try:
+        if isinstance(agent, AlphaSynuclein) or isinstance(agent, AlphaAggregate):
             return agent.aggregate_weight
-        except AttributeError:
+        else:
             return 0.0
 
     def local_debris_density_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:

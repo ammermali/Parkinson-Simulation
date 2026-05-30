@@ -126,7 +126,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[NeuronPerception] = None
         self.pending_action: Optional[NeuronAction] = None
-        self.rng = RNG()
+        self.rng = RNG
 
         # Cumulative value for cell damage
         self.cell_damage: float = 0.0

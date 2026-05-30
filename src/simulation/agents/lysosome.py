@@ -95,7 +95,7 @@ class Lysosome(AdaptiveAgent):
             self.state,
             self.state
         )
-        self.rng = RNG()
+        self.rng = RNG
 
     def see(self, model) -> LysosomePerception:
         """Read the current assignment and pressure in the owning neuron."""

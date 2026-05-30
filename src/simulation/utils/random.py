@@ -1,16 +1,27 @@
 from random import Random
+from typing import Optional
 
 class RNG:
-    def __init__(self, seed: int = 42):
-        random = Random()
-        random.seed(seed)
-        self._rng = random
+    """Shared random source used by simulation agents."""
+    _rng = Random()
+    _rng.seed(42)
 
-    def random(self) -> float:
-        return float(self._rng.random())
+    def __init__(self, seed: Optional[int] = None):
+        if seed is not None:
+            self.seed(seed)
 
-    def gaussian(self, mean: float, std: float) -> float:
-        return mean + std * self._rng.gauss(0, 1)
+    @classmethod
+    def seed(cls, seed: int = 42):
+        cls._rng.seed(seed)
 
-    def choice(self, values):
-        return self._rng.choice(values)
+    @classmethod
+    def random(cls) -> float:
+        return float(cls._rng.random())
+
+    @classmethod
+    def gaussian(cls, mean: float, std: float) -> float:
+        return mean + std * cls._rng.gauss(0, 1)
+
+    @classmethod
+    def choice(cls, values):
+        return cls._rng.choice(list(values))

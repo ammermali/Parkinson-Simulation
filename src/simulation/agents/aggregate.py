@@ -43,7 +43,7 @@ class AlphaAggregate(AdaptiveAgent):
     aggregate_id: int
     member_ids: set = field(default_factory=set)
     state: AggregateState = AggregateState.OLIGOMER
-    owner_neuron: Optional[object] = None
+    owner_neuron: Optional[Neuron] = None
     member_agents: set = field(default_factory=set, repr=False)
 
     def __post_init__(self):

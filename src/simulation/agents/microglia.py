@@ -52,7 +52,7 @@ class Microglia(AdaptiveAgent):
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[MicrogliaPerception] = None
         self.pending_action: Optional[MicrogliaAction] = None
-        self.rng = RNG()
+        self.rng = RNG
 
     def see(self, model) -> MicrogliaPerception:
         """Read extracellular debris, inflammation and nearby alpha density."""

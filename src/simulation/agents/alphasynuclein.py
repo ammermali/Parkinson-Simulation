@@ -59,7 +59,7 @@ class AlphaSynuclein(AdaptiveAgent):
         self.aggregate_id: Optional[int] = None
         self.last_perception: Optional[AlphaSynucleinPerception] = None
         self.pending_action: Optional[AlphaSynucleinAction] = None
-        self.rng = RNG()
+        self.rng = RNG
         # Intentions are reset in next() and consumed by AggregateRegistry.
         self.wants_oligomerization: bool = False
 

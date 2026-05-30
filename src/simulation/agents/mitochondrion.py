@@ -72,7 +72,7 @@ class Mitochondrion(AdaptiveAgent):
         self.pending_action: Optional[MitochondrionAction] = None
         self.cfg = config
         self.owner_neuron = owner_neuron
-        self.rng = RNG()
+        self.rng = RNG
 
 
     def see(self, model) -> MitochondrionPerception:

@@ -5,10 +5,8 @@ from enum import Enum
 
 class AdaptiveAgentAction(Enum):
     pass
-
 class AdaptiveAgentState(Enum):
     pass
-
 class AdaptiveAgentPerception:
     pass
 
@@ -19,6 +17,10 @@ class AdaptiveAgent(core.Agent, ABC):
     pending_action = None
 
     # Common Functions for all Adaptive Agents
+    def __init__(self, id, type, rank):
+        super().__init__(id, type, rank)
+        self.ptype = type
+
     @abstractmethod
     def see(self, model) -> AdaptiveAgentPerception:
         pass

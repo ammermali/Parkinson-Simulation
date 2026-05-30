@@ -34,6 +34,23 @@ class LysosomePerception(AdaptiveAgentPerception):
     local_aggregate_density: float
     target_pressure: float
 
+@dataclass(frozen=True)
+class LysosomeConfig:
+    """Tunable lysosomal sensing, movement and cleanup parameters."""
+
+    perception_radius: int = 1
+    move_radius: int = 1
+    base_degradation_probability: float = 0.8
+    protein_degradation_ticks: int = 1
+    mitochondrion_repair_ticks: int = 2
+    mitochondrion_repair_probability: float = 0.8
+    aggregate_degradation_ticks_base: int = 1
+    aggregate_degradation_ticks_per_member: int = 1
+    aggregate_degradation_probability_base: float = 0.35
+    aggregate_degradation_probability_per_member: float = 0.05
+    aggregate_overwhelm_probability_base: float = 0.02
+    aggregate_overwhelm_probability_per_member: float = 0.01
+
 class Lysosome(AdaptiveAgent):
     """Intracellular degradation agent coordinated by neuron target buffers.
     A lysosome does not discover all degradable agents directly. Instead,
@@ -49,35 +66,27 @@ class Lysosome(AdaptiveAgent):
             rank,
             type_id,
             owner_neuron,
-            perception_radius: int = 1,
-            move_radius: int = 1,
-            base_degradation_probability: float = 0.8,
-            protein_degradation_ticks: int = 1,
-            mitochondrion_repair_ticks: int = 2,
-            mitochondrion_repair_probability: float = 0.8,
-            aggregate_degradation_ticks_base: int = 1,
-            aggregate_degradation_ticks_per_member: int = 1,
-            aggregate_degradation_probability_base: float = 0.35,
-            aggregate_degradation_probability_per_member: float = 0.05,
-            aggregate_overwhelm_probability_base: float = 0.02,
-            aggregate_overwhelm_probability_per_member: float = 0.01,
+            config: Optional[LysosomeConfig] = None,
     ):
         super().__init__(local_id, type_id, rank)
 
-        self.state = LysosomeState.INACTIVE
+        raw_config = config or LysosomeConfig()
+        self.state: LysosomeState = LysosomeState.INACTIVE
         self.owner_neuron = owner_neuron
-        self.perception_radius = perception_radius
-        self.move_radius = move_radius
-        self.base_degradation_probability = clamp(base_degradation_probability)
-        self.protein_degradation_ticks = max(1, protein_degradation_ticks)
-        self.mitochondrion_repair_ticks = max(1, mitochondrion_repair_ticks)
-        self.mitochondrion_repair_probability = clamp(mitochondrion_repair_probability)
-        self.aggregate_degradation_ticks_base = max(1, aggregate_degradation_ticks_base)
-        self.aggregate_degradation_ticks_per_member = max(0, aggregate_degradation_ticks_per_member)
-        self.aggregate_degradation_probability_base = clamp(aggregate_degradation_probability_base)
-        self.aggregate_degradation_probability_per_member = max(0.0, aggregate_degradation_probability_per_member)
-        self.aggregate_overwhelm_probability_base = clamp(aggregate_overwhelm_probability_base)
-        self.aggregate_overwhelm_probability_per_member = max(0.0, aggregate_overwhelm_probability_per_member)
+        self.cfg = LysosomeConfig(
+            perception_radius=raw_config.perception_radius,
+            move_radius=raw_config.move_radius,
+            base_degradation_probability=clamp(raw_config.base_degradation_probability),
+            protein_degradation_ticks=max(1, raw_config.protein_degradation_ticks),
+            mitochondrion_repair_ticks=max(1, raw_config.mitochondrion_repair_ticks),
+            mitochondrion_repair_probability=clamp(raw_config.mitochondrion_repair_probability),
+            aggregate_degradation_ticks_base=max(1, raw_config.aggregate_degradation_ticks_base),
+            aggregate_degradation_ticks_per_member=max(0, raw_config.aggregate_degradation_ticks_per_member),
+            aggregate_degradation_probability_base=clamp(raw_config.aggregate_degradation_probability_base),
+            aggregate_degradation_probability_per_member=max(0.0, raw_config.aggregate_degradation_probability_per_member),
+            aggregate_overwhelm_probability_base=clamp(raw_config.aggregate_overwhelm_probability_base),
+            aggregate_overwhelm_probability_per_member=max(0.0, raw_config.aggregate_overwhelm_probability_per_member),
+        )
         self.target: Optional[AdaptiveAgent] = None
         self._work_target: Optional[AdaptiveAgent] = None
         self.degradation_ticks_remaining: int = 0
@@ -112,7 +121,7 @@ class Lysosome(AdaptiveAgent):
         targets = list(habitat.available_degradation_targets())
         local_aggregate_density = habitat.local_aggregate_density_at(
             position=position,
-            radius=self.perception_radius,
+            radius=self.cfg.perception_radius,
             include_center=True
         )
         perception = LysosomePerception(
@@ -261,6 +270,7 @@ class Lysosome(AdaptiveAgent):
         self._resolve_degradation_attempt(habitat, target)
 
     def _resolve_degradation_attempt(self, habitat, target: AdaptiveAgent):
+        """Resolve overwhelm, success or failure after work is complete."""
         overwhelm_probability = self.pr_overwhelmed_by_target(target)
         success_probability = min(self.pr_degradation_success(target), 1.0 - overwhelm_probability)
         draw = self.rng.random()
@@ -273,6 +283,7 @@ class Lysosome(AdaptiveAgent):
         self._fail_degradation(habitat, target)
 
     def _complete_degradation(self, habitat, target: AdaptiveAgent):
+        """Apply the successful cleanup effect for the target type."""
         if isinstance(target, AlphaAggregate):
             habitat.remove_agent(target)
         elif isinstance(target, Mitochondrion):
@@ -287,11 +298,13 @@ class Lysosome(AdaptiveAgent):
         self._reset_degradation_work()
 
     def _fail_degradation(self, habitat, target: AdaptiveAgent):
+        """Return a failed target to the neuron's available target pool."""
         habitat.clear_degradation_assignment(self, requeue_target=True)
         self.target = None
         self._reset_degradation_work()
 
     def _advance_degradation_work(self, target: AdaptiveAgent) -> bool:
+        """Advance multi-tick cleanup and report whether resolution is due."""
         self._ensure_degradation_work(target)
         if self.degradation_ticks_remaining > 1:
             self.degradation_ticks_remaining -= 1
@@ -300,23 +313,25 @@ class Lysosome(AdaptiveAgent):
         return True
 
     def _ensure_degradation_work(self, target: AdaptiveAgent):
+        """Initialize work duration when the lysosome starts a new target."""
         if self._work_target is target:
             return
         self._work_target = target
         self.degradation_ticks_remaining = self.degradation_ticks_required(target)
 
     def _reset_degradation_work(self):
+        """Clear current multi-tick degradation bookkeeping."""
         self._work_target = None
         self.degradation_ticks_remaining = 0
 
     def degradation_ticks_required(self, target: AdaptiveAgent) -> int:
         """Ticks needed before a degradation attempt can be resolved."""
         if isinstance(target, AlphaAggregate):
-            return self.aggregate_degradation_ticks_base + self.aggregate_degradation_ticks_per_member * max(0, target.size - 1)
+            return self.cfg.aggregate_degradation_ticks_base + self.cfg.aggregate_degradation_ticks_per_member * max(0, target.size - 1)
         if isinstance(target, Mitochondrion):
-            return self.mitochondrion_repair_ticks
+            return self.cfg.mitochondrion_repair_ticks
         if isinstance(target, AlphaSynuclein):
-            return self.protein_degradation_ticks
+            return self.cfg.protein_degradation_ticks
         return 1
 
     def _scan(self, habitat):
@@ -324,7 +339,7 @@ class Lysosome(AdaptiveAgent):
         position = habitat.position_of(self)
         if position is None:
             return
-        candidate_points = list(habitat.neighbor_points(position, self.move_radius, True))
+        candidate_points = list(habitat.neighbor_points(position, self.cfg.move_radius, True))
         if not candidate_points:
             return
         new_position = self.rng.choice(candidate_points)
@@ -334,12 +349,12 @@ class Lysosome(AdaptiveAgent):
         """Probability that one degradation attempt clears the assigned target."""
         if isinstance(target, AlphaAggregate):
             return clamp(
-                self.aggregate_degradation_probability_base
-                + self.aggregate_degradation_probability_per_member * target.size
+                self.cfg.aggregate_degradation_probability_base
+                + self.cfg.aggregate_degradation_probability_per_member * target.size
             )
         if isinstance(target, Mitochondrion):
-            return self.mitochondrion_repair_probability
-        return self.base_degradation_probability
+            return self.cfg.mitochondrion_repair_probability
+        return self.cfg.base_degradation_probability
 
     def pr_overwhelmed_by_target(self, target: AdaptiveAgent) -> float:
         """Probability that the target disables the lysosome this attempt."""
@@ -347,12 +362,13 @@ class Lysosome(AdaptiveAgent):
             return 1.0
         if isinstance(target, AlphaAggregate):
             return clamp(
-                self.aggregate_overwhelm_probability_base
-                + self.aggregate_overwhelm_probability_per_member * target.size
+                self.cfg.aggregate_overwhelm_probability_base
+                + self.cfg.aggregate_overwhelm_probability_per_member * target.size
             )
         return 0.0
 
     def _is_lewy_body(self, target: AdaptiveAgent) -> bool:
+        """Return True when the target is a Lewy body aggregate."""
         return isinstance(target, AlphaAggregate) and target.state == AggregateState.LEWY_BODY
 
     def _become_overwhelmed(self, habitat, target: AdaptiveAgent):

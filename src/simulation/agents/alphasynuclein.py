@@ -34,8 +34,6 @@ class AlphaSynucleinConfig:
     move_radius: int = 1
     move_probability: float = 0.5
     oxidative_stress_high_threshold: float = 0.6
-    aggregate_density_high_threshold: float = 0.4
-    lewy_body_density_high_threshold: float = 0.8
 
 @dataclass(frozen=True)
 class AlphaSynucleinPerception(AdaptiveAgentPerception):
@@ -55,7 +53,7 @@ class AlphaSynuclein(AdaptiveAgent):
     aggregate_id: Optional[int] = None
     def __init__(self, local_id: int, rank: int, type_id: int, config: AlphaSynucleinConfig, compartment: AlphaSynucleinCompartment, owner_neuron: Optional[AdaptiveAgent] = None):
         super().__init__(local_id, type_id, rank)
-        self.state = AlphaSynucleinState.MONOMER
+        self.state: AlphaSynucleinState = AlphaSynucleinState.MONOMER
         self.cfg = config
         self.compartment = compartment
         self.owner_neuron = owner_neuron
@@ -65,15 +63,17 @@ class AlphaSynuclein(AdaptiveAgent):
         self.rng = RNG()
         # Intentions are reset in next() and consumed by AggregateRegistry.
         self.wants_oligomerization: bool = False
-        self.wants_lewy_body_maturation: bool = False
 
     @property
     def is_free(self) -> bool:
+        """Whether this protein is active as an individual grid agent."""
         return self.aggregate_id is None and self.state != AlphaSynucleinState.CLEARED
 
     @property
     def can_seed_oligomerization(self) -> bool:
+        """Whether the registry may use this protein to form an oligomer."""
         return (self.is_free and self.state == AlphaSynucleinState.MISFOLDED and self.wants_oligomerization)
+
     @property
     def aggregate_weight(self) -> float:
         """Contribution to local aggregate load when the protein is free.
@@ -90,6 +90,15 @@ class AlphaSynuclein(AdaptiveAgent):
         """Read local stress and nearby agents from the current habitat."""
         habitat = self._habitat(model)
         position = habitat.position_of(self)
+        if self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
+            perception = AlphaSynucleinPerception(
+                position=position,
+                oxidative_stress=0.0,
+                local_aggregate_density=0.0,
+                neighbors=[],
+            )
+            self.last_perception = perception
+            return perception
         if position is None:
             perception = AlphaSynucleinPerception(
                 position=None,
@@ -128,7 +137,6 @@ class AlphaSynuclein(AdaptiveAgent):
         if self.last_perception is None:
             raise RuntimeError()
         self.wants_oligomerization = False
-        self.wants_lewy_body_maturation = False
         if not self.is_free or self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
             return self.state
         p = self.last_perception
@@ -142,7 +150,7 @@ class AlphaSynuclein(AdaptiveAgent):
 
     def action(self) -> AlphaSynucleinAction:
         """Free proteins move; cleared or already aggregated proteins stay."""
-        if not self.is_free:
+        if not self.is_free or self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
             self.pending_action = AlphaSynucleinAction.STAY
         else:
             self.pending_action = AlphaSynucleinAction.MOVE
@@ -153,6 +161,8 @@ class AlphaSynuclein(AdaptiveAgent):
         Degradable misfolded proteins register with the neuron, but aggregate
         formation is intentionally absent from this method.
         """
+        if self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
+            return
         if self.pending_action is None:
             raise RuntimeError()
         habitat = self._habitat(model)
@@ -181,7 +191,6 @@ class AlphaSynuclein(AdaptiveAgent):
         self.state = state
         self.pending_action = AlphaSynucleinAction.STAY
         self.wants_oligomerization = False
-        self.wants_lewy_body_maturation = False
 
     def mark_cleared(self):
         """Mark a free protein as cleared by degradation machinery."""
@@ -189,15 +198,31 @@ class AlphaSynuclein(AdaptiveAgent):
         self.state = AlphaSynucleinState.CLEARED
         self.pending_action = AlphaSynucleinAction.STAY
         self.wants_oligomerization = False
-        self.wants_lewy_body_maturation = False
+
+    def release_to_environment(self):
+        """Freeze this protein as extracellular pathology."""
+        self.compartment = AlphaSynucleinCompartment.EXTRACELLULAR
+        self.owner_neuron = None
+        self.pending_action = AlphaSynucleinAction.STAY
+        self.wants_oligomerization = False
+
+    def absorb_into_neuron(self, neuron):
+        """Move this extracellular protein into a neuron's internal habitat."""
+        self.compartment = AlphaSynucleinCompartment.INTRACELLULAR
+        self.owner_neuron = neuron
+        self.pending_action = AlphaSynucleinAction.STAY
+        self.wants_oligomerization = False
 
     def _register_if_degradable(self, habitat):
+        """Expose free misfolded intracellular proteins to lysosomes."""
         if self.compartment != AlphaSynucleinCompartment.INTRACELLULAR:
             return
         if self.state == AlphaSynucleinState.MISFOLDED and self.is_free:
             habitat.register_degradation_target(self)
 
     def _habitat(self, model):
+        """Return the habitat matching the current compartment."""
+
         if self.compartment == AlphaSynucleinCompartment.INTRACELLULAR:
             if self.owner_neuron is None:
                 raise RuntimeError("Intracellular AlphaSynuclein requires owner_neuron.")
@@ -207,6 +232,7 @@ class AlphaSynuclein(AdaptiveAgent):
         raise RuntimeError("Unknown AlphaSynuclein compartment.")
 
     def _neighbor_alpha_density(self) -> float:
+        """Density of neighboring alpha-synuclein-like agents."""
         if self.last_perception is None:
             return 0.0
         agents = list(self.last_perception.neighbors)
@@ -216,6 +242,7 @@ class AlphaSynuclein(AdaptiveAgent):
         return clamp(alpha_count / len(agents))
 
     def _neighbor_aggregate_density(self) -> float:
+        """Weighted local aggregate pathology density around this protein."""
         if self.last_perception is None:
             return 0.0
         agents = list(self.last_perception.neighbors)
@@ -225,16 +252,17 @@ class AlphaSynuclein(AdaptiveAgent):
         return clamp(aggregate_score / len(agents))
 
     def _same_type(self, agent: AdaptiveAgent) -> bool:
+        """Return True when another agent has the same Repast type id."""
         try:
             return agent.ptype == self.ptype
         except AttributeError:
             return False
 
     def _aggregate_weight(self, agent: AdaptiveAgent) -> float:
-        if isinstance(agent, (AlphaSynuclein)) or isinstance(agent, (AlphaAggregate)):
+        """Return an aggregate-like weight for local probability estimates."""
+        if isinstance(agent, (AlphaSynuclein, AlphaAggregate)):
             return agent.aggregate_weight
-        else:
-            return 0.0
+        return 0.0
 
     def pr_oligomerization(self) -> float:
         """Probability that a misfolded protein asks to join an aggregate."""

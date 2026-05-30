@@ -38,22 +38,26 @@ class AggregateRegistry:
             self._process_cell(habitat, point, free_candidates, aggregates)
 
     def aggregates(self) -> list[AlphaAggregate]:
+        """Return aggregate agents currently owned by this registry."""
         return list(self._aggregates.values())
 
     def aggregate_for(self, aggregate_id: int) -> Optional[AlphaAggregate]:
+        """Look up an aggregate by its biological aggregate id."""
         return self._aggregates.get(aggregate_id)
 
     def members(self, aggregate_id: int) -> set[AlphaSynuclein]:
+        """Return tracked protein objects represented by an aggregate."""
         return set(self._members.get(aggregate_id, set()))
 
     def size(self, aggregate_id: int) -> int:
+        """Return aggregate size by id, or zero when it is unknown."""
         aggregate = self._aggregates.get(aggregate_id)
         if aggregate is None:
             return 0
         return aggregate.size
 
     def create_aggregate(self, habitat, point: DiscretePoint, members: Iterable[AlphaSynuclein], state: AggregateState = AggregateState.OLIGOMER) -> Optional[AlphaAggregate]:
-        """Create one AggregateAgent from two or more free proteins."""
+        """Create one AlphaAggregate from two or more free proteins."""
 
         members = [
             member
@@ -93,7 +97,7 @@ class AggregateRegistry:
         if point is not None:
             habitat.remove_agent(alpha)
         self._members[aggregate.aggregate_id].add(alpha)
-        aggregate.add_members({self._member_id(alpha)})
+        aggregate.add_member(self._member_id(alpha), alpha)
         member_state = (
             AlphaSynucleinState.LEWY_BODY
             if aggregate.state == AggregateState.LEWY_BODY
@@ -111,7 +115,7 @@ class AggregateRegistry:
         if source.aggregate_id not in self._aggregates:
             return False
         source_members = self._members.get(source.aggregate_id, set())
-        target.add_members(source.member_ids)
+        target.add_members(source.member_ids, source.member_agents)
         self._members[target.aggregate_id].update(source_members)
         self._set_members_state(
             target,
@@ -139,17 +143,37 @@ class AggregateRegistry:
         if isinstance(agent, AlphaSynuclein) and agent.aggregate_id is not None:
             self._remove_member(agent)
 
+    def unregister_aggregate_for_transfer(self, aggregate: AlphaAggregate) -> set[AlphaSynuclein]:
+        """Unregister an aggregate for extracellular transfer without clearing it."""
+        members = self._members.pop(aggregate.aggregate_id, set())
+        aggregate.member_agents.update(members)
+        self._aggregates.pop(aggregate.aggregate_id, None)
+        return set(aggregate.member_agents)
+
+    def register_existing_aggregate(self, habitat, aggregate: AlphaAggregate):
+        """Register an absorbed aggregate that was created elsewhere."""
+        self._next_id = max(self._next_id, aggregate.aggregate_id)
+        self._aggregates[aggregate.aggregate_id] = aggregate
+        members = set(aggregate.member_agents)
+        member_state = (
+            AlphaSynucleinState.LEWY_BODY
+            if aggregate.state == AggregateState.LEWY_BODY
+            else AlphaSynucleinState.OLIGOMER
+        )
+        for member in members:
+            aggregate.add_member(self._member_id(member), member)
+            member.join_aggregate(aggregate.aggregate_id, member_state)
+        self._members[aggregate.aggregate_id] = members
+        aggregate.owner_neuron = habitat
+        self._register_degradation_target(habitat, aggregate)
+
     def new_id(self) -> int:
+        """Return a fresh registry-local aggregate id."""
         self._next_id += 1
         return self._next_id
 
-    def _process_cell(
-            self,
-            habitat,
-            point: DiscretePoint,
-            free_candidates: list[AlphaSynuclein],
-            aggregates: list[AlphaAggregate],
-    ):
+    def _process_cell(self, habitat, point: DiscretePoint, free_candidates: list[AlphaSynuclein], aggregates: list[AlphaAggregate]):
+        """Resolve aggregation, recruitment and maturation inside one cell."""
         self._refresh_aggregate_intentions(aggregates)
 
         lewy_bodies = [
@@ -188,6 +212,7 @@ class AggregateRegistry:
                 self.mature_to_lewy_body(aggregate)
 
     def _agents_by_cell(self, habitat):
+        """Group current intracellular agents by grid cell."""
         cells: dict[tuple[int, int], tuple[DiscretePoint, list[AdaptiveAgent]]] = {}
         for agent in list(habitat.grid.agent_registry):
             point = habitat.position_of(agent)
@@ -200,6 +225,7 @@ class AggregateRegistry:
         return cells.values()
 
     def _refresh_aggregate_intentions(self, aggregates: Iterable[AlphaAggregate]):
+        """Update aggregate recruitment and maturation flags for this tick."""
         for aggregate in aggregates:
             if aggregate.state == AggregateState.LEWY_BODY:
                 aggregate.wants_lewy_body_maturation = True
@@ -207,23 +233,28 @@ class AggregateRegistry:
                 aggregate.wants_lewy_body_maturation = self._should_mature(aggregate)
 
     def _should_mature(self, aggregate: AlphaAggregate) -> bool:
+        """Return whether an oligomer matures into a Lewy body this pass."""
         probability = clamp(aggregate.size / self.lewy_body_size_threshold)
         return self.rng.random() < probability
 
     def _largest(self, aggregates: Iterable[AlphaAggregate]) -> AlphaAggregate:
+        """Choose the largest aggregate as merge target."""
         return max(aggregates, key=lambda aggregate: aggregate.size)
 
     def _set_members_state(self, aggregate: AlphaAggregate, state: AlphaSynucleinState):
+        """Mirror aggregate state into every tracked member protein."""
         for member in self._members.get(aggregate.aggregate_id, set()):
             member.join_aggregate(aggregate.aggregate_id, state)
 
     def _remove_aggregate(self, aggregate: AlphaAggregate):
-        members = self._members.pop(aggregate.aggregate_id, set())
+        """Clear an aggregate after successful degradation."""
+        members = self._members.pop(aggregate.aggregate_id, set()) | set(aggregate.member_agents)
         for member in members:
             member.mark_cleared()
         self._aggregates.pop(aggregate.aggregate_id, None)
 
     def _remove_member(self, alpha: AlphaSynuclein):
+        """Remove one protein from aggregate bookkeeping."""
         aggregate_id = alpha.aggregate_id
         if aggregate_id is None:
             return
@@ -236,6 +267,7 @@ class AggregateRegistry:
         alpha.aggregate_id = None
 
     def _member_id(self, alpha: AlphaSynuclein):
+        """Return a stable member identifier for aggregate membership."""
         try:
             return alpha.uid
         except AttributeError:
@@ -266,6 +298,7 @@ class AggregateRegistry:
         return 0
 
     def _uid_value(self, agent: AdaptiveAgent, index: int, attr_name: str):
+        """Read either tuple-like or object-like Repast UID fields."""
         uid = getattr(agent, "uid", None)
         if uid is None:
             return None
@@ -278,11 +311,13 @@ class AggregateRegistry:
             return None
 
     def _register_degradation_target(self, habitat, aggregate: AlphaAggregate):
+        """Expose an aggregate to the neuron's lysosomal target buffer."""
         register = getattr(habitat, "register_degradation_target", None)
         if callable(register):
             register(aggregate)
 
     def _untrack_degradation_target(self, habitat, aggregate: AlphaAggregate):
+        """Remove an aggregate from lysosomal target buffers during merge."""
         unregister = getattr(habitat, "unregister_degradation_target", None)
         if callable(unregister):
             unregister(aggregate)

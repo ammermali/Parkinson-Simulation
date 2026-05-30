@@ -1,12 +1,12 @@
+from math import ceil
 from typing import Optional
 from repast4py.space import DiscretePoint
-
 from src.simulation.agents.aggregate import AlphaAggregate
-from src.simulation.utils import InternalHabitatMixin
+from src.simulation.utils import InternalHabitatMixin, RNG
 from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from src.simulation.agents.aggregate_registry import AggregateRegistry
-from src.simulation.agents.alphasynuclein import AlphaSynuclein
+from src.simulation.agents.alphasynuclein import AlphaSynuclein, AlphaSynucleinState
 from dataclasses import dataclass
 
 # Internal State Set
@@ -105,22 +105,15 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
     degradation targets and aggregate bookkeeping.
     """
 
-    def __init__(
-            self,
-            local_id: int,
-            rank: int,
-            type_id: int,
-            config: NeuronConfig,
-            alpha_type_id:int):
-
+    def __init__(self, local_id: int, rank: int, type_id: int, config: NeuronConfig, alpha_type_id:int):
         super().__init__(local_id, type_id, rank)
-
         # Adaptive agent fields
-        self.state = NeuronState.HEALTHY
+        self.state: NeuronState = NeuronState.HEALTHY
         self.cfg = config
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[NeuronPerception] = None
         self.pending_action: Optional[NeuronAction] = None
+        self.rng = RNG()
 
         # Cumulative value for cell damage
         self.cell_damage: float = 0.0
@@ -140,6 +133,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.aggregate_registry = AggregateRegistry()
 
     def see(self, model) -> NeuronPerception:
+        """Build the neuron perception from external and internal signals."""
         env = model.environment
         position = env.position_of(self)
         if position is None:
@@ -162,6 +156,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return perception
 
     def next(self) -> NeuronState:
+        """Advance the neuronal damage state from the last perception."""
         if self.last_perception is None:
             raise RuntimeError()
         p = self.last_perception
@@ -186,6 +181,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return self.state
 
     def action(self) -> Optional[NeuronAction]:
+        """Choose the neuron-level action for this tick."""
         if self.last_perception is None:
             raise RuntimeError()
         p = self.last_perception
@@ -208,6 +204,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return self.pending_action
 
     def do(self, model):
+        """Apply the selected neuron-level effect to the model."""
         if self.last_perception is None:
             return
         env = model.environment
@@ -218,12 +215,15 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         elif self.pending_action == NeuronAction.DUMP_DEBRIS:
             env.add_debris(self.internal_scalars.intracellular_debris)
             self.internal_scalars.intracellular_debris = 0.0
+            self.release_alpha(model)
         elif self.pending_action == NeuronAction.A_ALPHASYNUCLEIN:
             self.absorb_alpha(model)
         elif self.pending_action == NeuronAction.R_ALPHASYNUCLEIN:
             self.release_alpha(model)
 
     def step(self, model):
+        """Run one intracellular phase pass followed by the neuron macro step."""
+
         self.begin_tick()
         internal_agents = [
             agent
@@ -251,6 +251,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.do(model)
 
     def begin_tick(self):
+        """Reset buffered intracellular effects for a new tick."""
+
         self.internal_effects = NeuronInternalEffects()
 
     def commit_effects(self):
@@ -264,9 +266,13 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         s.energy_demand = clamp(s.energy_demand + e.energy_demand_added + baseline_pull)
 
     def _compute_external_stress(self, perception: NeuronPerception) -> float:
+        """Combine extracellular inflammatory, debris and alpha stress."""
+
         return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
 
     def compute_alpha_load(self) -> float:
+        """Compute total intracellular alpha pathology load over grid capacity."""
+
         width = max(1, self.internal_cfg.width)
         height = max(1, self.internal_cfg.height)
         capacity = width * height
@@ -277,6 +283,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return clamp(aggregate_score / capacity)
 
     def compute_internal_damage(self) -> float:
+        """Compute weighted intracellular damage from scalars and alpha load."""
+
         cfg = self.internal_cfg
         s = self.internal_scalars
         aggregate_density = self.compute_alpha_load()
@@ -288,10 +296,129 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return clamp(value)
 
     def absorb_alpha(self, model):
-        raise NotImplementedError # TODO
+        """Gradually absorb one extracellular alpha pathology agent.
+
+        Absorption is intentionally gradual: one eligible extracellular
+        AlphaSynuclein or AlphaAggregate near this neuron may enter the
+        intracellular grid per call, controlled by alpha_absorption_rate.
+        """
+
+        env = model.environment
+        position = env.position_of(self)
+        if position is None:
+            return None
+        candidates = [
+            agent
+            for agent in env.agents_in_radius(
+                center=position,
+                radius=self.cfg.per_radius,
+                include_center=True,
+            )
+            if self._is_absorbable_alpha_pathology(agent)
+        ]
+        for candidate in candidates:
+            if self.rng.random() <= self.cfg.alpha_absorption_rate:
+                self._absorb_alpha_agent(env, candidate)
+                return candidate
+        return None
 
     def release_alpha(self, model):
-        raise NotImplementedError # TODO
+        """Release intracellular alpha pathology into the Substantia Nigra.
+
+        Rupture is modeled as an immediate spill of every visible alpha
+        pathology agent. Non-ruptured release, such as apoptotic leakage or
+        high alpha load, is gradual and releases a configured fraction.
+        """
+
+        env = model.environment
+        release_point = env.position_of(self)
+        if release_point is None:
+            return []
+        pathology = self.alpha_pathology_agents()
+        if not pathology:
+            return []
+        release_count = len(pathology) if self.state == NeuronState.RUPTURED else self._gradual_alpha_release_count(len(pathology))
+        released = []
+        for agent in pathology[:release_count]:
+            self._release_alpha_agent(env, agent, release_point)
+            released.append(agent)
+        return released
+
+    def alpha_pathology_agents(self) -> list[AdaptiveAgent]:
+        """Return visible intracellular, uncleared alpha-synuclein agents."""
+
+        return [
+            agent
+            for agent in list(self.grid.agent_registry)
+            if isinstance(agent, AlphaAggregate)
+            or (
+                isinstance(agent, AlphaSynuclein)
+                and agent.state != AlphaSynucleinState.CLEARED
+            )
+        ]
+
+    def _gradual_alpha_release_count(self, total: int) -> int:
+        """Number of alpha pathology agents released by non-rupture leakage."""
+
+        if total <= 0 or self.cfg.alpha_release_amount <= 0.0:
+            return 0
+        if self.cfg.alpha_release_amount >= 1.0:
+            return min(total, int(self.cfg.alpha_release_amount))
+        return max(1, min(total, ceil(total * self.cfg.alpha_release_amount)))
+
+    def _release_alpha_agent(self, env, agent: AdaptiveAgent, point: DiscretePoint):
+        """Move one alpha pathology agent from neuron grid to environment grid."""
+
+        self._transfer_alpha_out_of_neuron(agent)
+        if isinstance(agent, AlphaSynuclein):
+            agent.release_to_environment()
+        elif isinstance(agent, AlphaAggregate):
+            agent.release_to_environment()
+        env.add_agent(agent, point)
+
+    def _absorb_alpha_agent(self, env, agent: AdaptiveAgent):
+        """Move one extracellular alpha pathology agent into this neuron."""
+
+        env.remove_agent(agent)
+        point = self._default_internal_point()
+        if isinstance(agent, AlphaSynuclein):
+            agent.absorb_into_neuron(self)
+            self.add_agent(agent, point)
+        elif isinstance(agent, AlphaAggregate):
+            agent.absorb_into_neuron(self)
+            for member in agent.member_agents:
+                member.absorb_into_neuron(self)
+            self.add_agent(agent, point)
+            self.aggregate_registry.register_existing_aggregate(self, agent)
+
+    def _transfer_alpha_out_of_neuron(self, agent: AdaptiveAgent):
+        """Remove alpha pathology from neuron ownership without clearing it."""
+
+        self.unregister_degradation_target(agent)
+        self.clear_degradation_assignment(agent)
+        self.clear_assignments_for_target(agent)
+        if isinstance(agent, AlphaAggregate):
+            members = self.aggregate_registry.unregister_aggregate_for_transfer(agent)
+            for member in members:
+                member.release_to_environment()
+        self.grid.remove_agent(agent)
+
+    def _default_internal_point(self) -> DiscretePoint:
+        """Return a stable default point for absorbed intracellular agents."""
+
+        return DiscretePoint(
+            self.internal_cfg.width // 2,
+            self.internal_cfg.height // 2,
+        )
+
+    def _is_absorbable_alpha_pathology(self, agent: AdaptiveAgent) -> bool:
+        """Return whether an extracellular agent can be absorbed by this neuron."""
+
+        if isinstance(agent, AlphaAggregate):
+            return agent.owner_neuron is None
+        if isinstance(agent, AlphaSynuclein):
+            return agent.owner_neuron is None and agent.state != AlphaSynucleinState.CLEARED
+        return False
 
     # Degradation Buffer Functions
     def register_degradation_target(self, agent: AdaptiveAgent):
@@ -376,12 +503,18 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     # Internal Scalar Functions
     def add_oxidative_stress(self, amount: float):
+        """Buffer a change in intracellular oxidative stress."""
+
         self.internal_effects.oxidative_stress_added += amount
 
     def oxidative_stress_at(self, position: Optional[DiscretePoint] = None) -> float:
+        """Return global intracellular oxidative stress."""
+
         return self.internal_scalars.oxidative_stress
 
     def add_intracellular_debris(self, amount: float):
+        """Buffer a change in intracellular debris."""
+
         self.internal_effects.debris_added += amount
 
     def add_energy_demand(self, amount: float):
@@ -389,9 +522,13 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.internal_effects.energy_demand_added += amount
 
     def energy_demand_at(self, position: Optional[DiscretePoint] = None) -> float:
+        """Return global unmet cellular energy demand."""
+
         return self.internal_scalars.energy_demand
 
     def local_aggregate_density_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
+        """Return local alpha aggregate density around a grid position."""
+
         if position is None:
             return 0.0
         points = list(self.grid.neighbor_points(position, radius, include_center))
@@ -404,6 +541,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return clamp(aggregate_score / len(points))
 
     def remove_agent(self, agent: AdaptiveAgent):
+        """Remove an intracellular agent and all neuron bookkeeping for it."""
+
         self.grid.remove_agent(agent)
         self.aggregate_registry.remove(agent)
         self.clear_degradation_assignment(agent)
@@ -412,12 +551,16 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.degradation_targets.remove(agent)
 
     def aggregate_weight(self, agent: AdaptiveAgent) -> float:
+        """Return the contribution of an agent to alpha pathology load."""
+
         if isinstance(agent, AlphaSynuclein) or isinstance(agent, AlphaAggregate):
             return agent.aggregate_weight
         else:
             return 0.0
 
     def local_debris_density_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
+        """Return local debris-like agent density around a grid position."""
+
         if position is None:
             return 0.0
         points = list(self.grid.neighbor_points(position, radius, include_center))
@@ -439,4 +582,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         return clamp(debris_score / len(points))
 
     def local_debris_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
+        """Backward-compatible alias for local_debris_density_at."""
+
         return self.local_debris_density_at(position, radius, include_center)

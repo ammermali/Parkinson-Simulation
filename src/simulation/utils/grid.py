@@ -42,6 +42,8 @@ class LocalGrid:
                 if old_point is None:
                     self._repast_grid.remove(agent)
                 raise ValueError(f"Could not add agent at point {point}.")
+            if agent not in self.agent_registry:
+                self.agent_registry.append(agent)
             return moved_to
         if not self._inside_bounds(point.x, point.y):
             raise ValueError(f"Point {point} is outside grid bounds.")
@@ -92,6 +94,8 @@ class LocalGrid:
     def remove_agent(self, agent):
         if self.is_repast_backed:
             self._repast_grid.remove(agent)
+            if agent in self.agent_registry:
+                self.agent_registry.remove(agent)
             return
         point = self._locations.pop(agent, None)
         if point is not None:

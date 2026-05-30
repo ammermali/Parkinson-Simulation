@@ -1,4 +1,5 @@
 import pytest
+from dataclasses import replace
 from repast4py.space import DiscretePoint
 from testhelpers import TestAgent, TestRng, import_any
 
@@ -17,6 +18,7 @@ MitochondrionState = mitochondrion_module.MitochondrionState
 lysosome_module = import_any("src.simulation.agents.lysosome")
 Lysosome = lysosome_module.Lysosome
 LysosomeAction = lysosome_module.LysosomeAction
+LysosomeConfig = lysosome_module.LysosomeConfig
 LysosomeState = lysosome_module.LysosomeState
 neuron_module = import_any("src.simulation.agents.neuron")
 Neuron = neuron_module.Neuron
@@ -51,12 +53,13 @@ def make_neuron() -> Neuron:
 
 
 def make_lysosome(neuron: Neuron, **kwargs) -> Lysosome:
+    config = replace(LysosomeConfig(), **kwargs)
     lysosome = Lysosome(
         local_id=50,
         rank=0,
         type_id=60,
         owner_neuron=neuron,
-        **kwargs
+        config=config,
     )
     lysosome.state = LysosomeState.ACTIVE
     lysosome.rng = TestRng(random_value=0.0)

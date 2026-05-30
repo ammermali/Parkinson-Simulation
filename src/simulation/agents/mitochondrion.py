@@ -65,24 +65,14 @@ class Mitochondrion(AdaptiveAgent):
     and debris states register with the neuron's degradation buffer so
     lysosomes can repair them.
     """
-    def __init__(self,
-                 local_id: int,
-                 rank: int,
-                 type_id: int,
-                 config: MitochondrionConfig,
-                 owner_neuron: "Neuron"
-                 ):
+    def __init__(self, local_id: int, rank: int, type_id: int, config: MitochondrionConfig, owner_neuron: "Neuron"):
         super().__init__(local_id, type_id, rank)
-        self.state = MitochondrionState.HEALTHY
+        self.state: MitochondrionState = MitochondrionState.HEALTHY
         self.last_perception: Optional[MitochondrionPerception] = None
         self.pending_action: Optional[MitochondrionAction] = None
         self.cfg = config
         self.owner_neuron = owner_neuron
         self.rng = RNG()
-        self.last_transition: tuple[MitochondrionState, MitochondrionState] = (
-            self.state,
-            self.state
-        )
 
 
     def see(self, model) -> MitochondrionPerception:
@@ -218,9 +208,11 @@ class Mitochondrion(AdaptiveAgent):
         )
 
     def _register_if_degradable(self, habitat):
+        """Expose damaged mitochondria to the neuron's lysosome buffer."""
         habitat.register_degradation_target(self)
 
     def _add_intracellular_debris(self, habitat, amount: float):
+        """Buffer mitochondrial debris changes through the neuron API."""
         habitat.add_intracellular_debris(amount)
 
     def pr_pathological_evolution(self) -> float:

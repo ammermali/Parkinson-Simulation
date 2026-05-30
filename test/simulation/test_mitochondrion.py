@@ -15,6 +15,7 @@ MitochondrionState = mitochondrion_module.MitochondrionState
 lysosome_module = import_any("src.simulation.agents.lysosome")
 Lysosome = lysosome_module.Lysosome
 LysosomeAction = lysosome_module.LysosomeAction
+LysosomeConfig = lysosome_module.LysosomeConfig
 LysosomeState = lysosome_module.LysosomeState
 
 neuron_module = import_any("src.simulation.agents.neuron")
@@ -193,9 +194,11 @@ class TestMitochondrion:
             rank=0,
             type_id=60,
             owner_neuron=neuron,
-            base_degradation_probability=1.0,
-            mitochondrion_repair_ticks=1,
-            mitochondrion_repair_probability=1.0,
+            config=LysosomeConfig(
+                base_degradation_probability=1.0,
+                mitochondrion_repair_ticks=1,
+                mitochondrion_repair_probability=1.0,
+            ),
         )
         lysosome.state = LysosomeState.ACTIVE
         lysosome.rng = TestRng(random_value=0.0)

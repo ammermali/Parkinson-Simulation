@@ -44,8 +44,10 @@ class AlphaAggregate(AdaptiveAgent):
     member_ids: set = field(default_factory=set)
     state: AggregateState = AggregateState.OLIGOMER
     owner_neuron: Optional[object] = None
+    member_agents: set = field(default_factory=set, repr=False)
 
     def __post_init__(self):
+        """Initialize runtime fields after dataclass construction."""
         AdaptiveAgent.__init__(self, self.local_id, self.type_id, self.rank)
         self.last_perception: Optional[AggregatePerception] = None
         self.pending_action: AggregateAction = AggregateAction.STAY
@@ -73,9 +75,17 @@ class AlphaAggregate(AdaptiveAgent):
         """Whether this aggregate can recruit other pathology this tick."""
         return self.state == AggregateState.LEWY_BODY or self.wants_lewy_body_maturation
 
-    def add_members(self, member_ids: Iterable[int]):
+    def add_member(self, member_id, member_agent=None):
+        """Add one represented protein by id and, when available, object."""
+        self.member_ids.add(member_id)
+        if member_agent is not None:
+            self.member_agents.add(member_agent)
+
+    def add_members(self, member_ids: Iterable[int], member_agents: Optional[Iterable[object]] = None):
         """Add protein identifiers absorbed into this aggregate."""
         self.member_ids.update(member_ids)
+        if member_agents is not None:
+            self.member_agents.update(member_agents)
 
     def mature_to_lewy_body(self):
         """Promote the aggregate to Lewy body state."""
@@ -90,8 +100,8 @@ class AlphaAggregate(AdaptiveAgent):
         return perception
 
     def next(self) -> AggregateState:
-        # The registry computes oligomer maturation probability; Lewy bodies
-        # always remain recruitment-competent.
+        """Keep Lewy bodies recruitment-competent between registry passes."""
+
         self.wants_lewy_body_maturation = self.state == AggregateState.LEWY_BODY
         return self.state
 
@@ -108,3 +118,13 @@ class AlphaAggregate(AdaptiveAgent):
         if self.owner_neuron is not None:
             self.owner_neuron.register_degradation_target(self)
         return
+
+    def release_to_environment(self):
+        """Mark the aggregate as extracellular and detached from a neuron."""
+        self.owner_neuron = None
+        self.pending_action = AggregateAction.STAY
+
+    def absorb_into_neuron(self, neuron):
+        """Mark the aggregate as intracellular inside a new neuron."""
+        self.owner_neuron = neuron
+        self.pending_action = AggregateAction.STAY

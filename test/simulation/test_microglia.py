@@ -77,6 +77,28 @@ class TestMicroglia:
         microglia.next()
         assert microglia.state == MicrogliaState.RESTING
 
+    def test_next_can_remain_resting_when_probabilistic_activation_fails(self):
+        config = make_config()
+        config.activation_transition_rate = 0.1
+        microglia = Microglia(local_id=1, rank=0, type_id=2, config=config, alpha_type_id=9)
+        microglia.rng = TestRng(random_value=1.0)
+        microglia.last_perception = MicrogliaPerception(None, extracellular_debris=0.0, inflammation_level=0.8, nearby_alpha=0.0)
+
+        microglia.next()
+
+        assert microglia.state == MicrogliaState.RESTING
+        assert microglia.last_transition_sample["check"] == "resting_to_activated"
+
+    def test_next_activated_to_clearing_when_debris_persists_after_activation_signals_drop(self):
+        microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(), alpha_type_id=9)
+        microglia.rng = TestRng(random_value=0.0)
+        microglia.state = MicrogliaState.ACTIVATED
+        microglia.last_perception = MicrogliaPerception(None, extracellular_debris=0.7, inflammation_level=0.1, nearby_alpha=0.1)
+
+        microglia.next()
+
+        assert microglia.state == MicrogliaState.CLEARING
+
     @pytest.mark.parametrize(
         ("state", "expected_action"),
         [

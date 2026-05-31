@@ -69,6 +69,10 @@ rates:
   inflammation_release_rate: 0.12
 movement:
   move_probability: 0.8
+dynamics:
+  activation_transition_rate: 0.21
+  clearing_transition_rate: 0.22
+  recovery_transition_rate: 0.23
 """,
         encoding="utf-8",
     )
@@ -78,6 +82,9 @@ movement:
     assert config.debris_low_threshold == pytest.approx(0.4)
     assert config.debris_clearance_rate == pytest.approx(0.11)
     assert config.move_probability == pytest.approx(0.8)
+    assert config.activation_transition_rate == pytest.approx(0.21)
+    assert config.clearing_transition_rate == pytest.approx(0.22)
+    assert config.recovery_transition_rate == pytest.approx(0.23)
 
 
 def test_sampled_thresholds_are_clamped(tmp_path: Path):
@@ -92,12 +99,15 @@ thresholds:
 rates:
   support_inflammation_reduction_rate: 0.05
   inflammation_release_rate: 0.08
+dynamics:
+  debris_stress_weight: 0.25
 """,
         encoding="utf-8",
     )
     high = factory.build_astrocyte_config(Params(str(path)), rng=TestRng(random_value=2.0))
     low = factory.build_astrocyte_config(Params(str(path)), rng=TestRng(random_value=-2.0))
     assert high.inflammation_high_threshold == 1.0
+    assert high.debris_stress_weight == pytest.approx(0.25)
     assert low.inflammation_low_threshold == 0.0
 
 

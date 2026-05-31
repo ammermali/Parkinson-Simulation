@@ -482,6 +482,28 @@ class TestParkinsonModel:
         assert any('"field": "extracellular_debris"' in row for row in rows)
         assert (tmp_path / "run_metadata.json").exists()
 
+    def test_initial_alpha_agents_are_recorded_as_g0_baseline_nodes(self, engine_module, tmp_path):
+        params = {
+            "stop.at": 2,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 1, "microglia": 0, "astrocytes": 0, "alpha": 1},
+            "logging": {
+                "enabled": True,
+                "output_dir": str(tmp_path),
+                "scalar_stdout": False
+            }}
+
+        engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+
+        rows = (tmp_path / "g0_nodes_rank0.jsonl").read_text(encoding="utf-8").splitlines()
+        alpha_rows = [
+            row
+            for row in rows
+            if '"agent_type": "AlphaSynuclein"' in row and '"tick": 0' in row
+        ]
+        assert len(alpha_rows) == 3
+
     def test_max_possible_dopamine_uses_initial_capacity_even_after_neuron_loss(self, engine_module):
         neuron_module = importlib.import_module("src.simulation.agents.neuron")
         def make_neuron(local_id, state, dopamine_release_rate):

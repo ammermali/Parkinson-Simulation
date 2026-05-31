@@ -80,6 +80,37 @@ class TestAstrocyte:
         astrocyte.next()
         assert astrocyte.state == AstrocyteState.SUPPORTIVE
 
+    def test_next_reactive_recovery_is_not_hard_blocked_by_debris_when_debris_weight_is_zero(self):
+        config = make_config()
+        config.debris_stress_weight = 0.0
+        astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=config)
+        astrocyte.rng = TestRng(random_value=0.0)
+        astrocyte.state = AstrocyteState.REACTIVE
+        astrocyte.last_perception = astrocyte_module.AstrocytePerception(
+            position=None,
+            inflammation_level=0.1,
+            extracellular_debris=1.0,
+        )
+
+        astrocyte.next()
+
+        assert astrocyte.state == AstrocyteState.SUPPORTIVE
+
+    def test_debris_pressure_can_be_down_weighted_in_stress_memory(self):
+        config = make_config()
+        config.debris_stress_weight = 0.2
+        astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=config)
+        astrocyte.rng = TestRng(random_value=1.0)
+        astrocyte.last_perception = astrocyte_module.AstrocytePerception(
+            position=None,
+            inflammation_level=0.0,
+            extracellular_debris=1.0,
+        )
+
+        astrocyte.next()
+
+        assert astrocyte.stress_memory == pytest.approx(0.2)
+
     def test_action_maps_supportive_to_support(self):
         astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=make_config())
         astrocyte.action()

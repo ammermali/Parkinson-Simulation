@@ -22,8 +22,13 @@ thresholds:
     std: 0.03
 
 rates:
-  debris_clearance_rate: 0.1
-  inflammation_release_rate: 0.15
+  debris_clearance_rate: 0.05
+  inflammation_release_rate: 0.02
 
 movement:
   move_probability: 0.5
+
+dynamics:
+  activation_transition_rate: 0.35
+  clearing_transition_rate: 0.45
+  recovery_transition_rate: 0.25

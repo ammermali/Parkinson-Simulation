@@ -29,6 +29,8 @@ class TestCausalTraceLogger:
         logger.close()
         edge = json.loads((tmp_path / "g0_edges.jsonl").read_text(encoding="utf-8").splitlines()[0])
         metadata = json.loads((tmp_path / "run_metadata.json").read_text(encoding="utf-8"))
+        assert (tmp_path / "g0_edges_rank0.jsonl").exists()
+        assert (tmp_path / "g0_nodes_rank0.jsonl").exists()
         assert edge["relation"] == "threshold_trigger"
         assert edge["source_node_id"]
         assert edge["target_node_id"]

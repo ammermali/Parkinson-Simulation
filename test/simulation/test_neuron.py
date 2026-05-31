@@ -270,8 +270,19 @@ class TestNeuron:
         neuron.pending_action = NeuronAction.DUMP_DEBRIS
         neuron.internal_scalars.intracellular_debris = 0.42
         neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
-        assert environment.added_debris == pytest.approx(0.42)
+        assert environment.added_debris == pytest.approx(0.42 + neuron.cfg.debris_release_rate)
         assert neuron.internal_scalars.intracellular_debris == 0.0
+
+    def test_do_dump_debris_releases_configured_rupture_payload_only_once(self):
+        neuron = make_neuron()
+        environment = TestSubstantiaNigraLikeEnvironment()
+        neuron.last_perception = make_perception()
+        neuron.pending_action = NeuronAction.DUMP_DEBRIS
+
+        neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
+        neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
+
+        assert environment.added_debris == pytest.approx(neuron.cfg.debris_release_rate)
 
     def test_begin_tick_resets_internal_effects(self):
         neuron = make_neuron()

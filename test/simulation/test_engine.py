@@ -15,6 +15,10 @@ def install_runtime_stubs(monkeypatch):
     class TestComm:
         def Get_rank(self):
             return 0
+        def Get_size(self):
+            return 1
+        def allreduce(self, value, op=None):
+            return value
 
     mpi_module = types.ModuleType("mpi4py")
     mpi_module.MPI = types.SimpleNamespace(COMM_WORLD=TestComm(), Intracomm=TestComm)
@@ -478,7 +482,7 @@ class TestParkinsonModel:
         assert any('"field": "extracellular_debris"' in row for row in rows)
         assert (tmp_path / "run_metadata.json").exists()
 
-    def test_max_possible_dopamine_excludes_apoptotic_and_ruptured_neurons(self, engine_module):
+    def test_max_possible_dopamine_uses_initial_capacity_even_after_neuron_loss(self, engine_module):
         neuron_module = importlib.import_module("src.simulation.agents.neuron")
         def make_neuron(local_id, state, dopamine_release_rate):
             config = neuron_module.NeuronConfig(
@@ -518,7 +522,62 @@ class TestParkinsonModel:
             make_neuron(3, engine_module.NeuronState.APOPTOTIC, 0.4),
             make_neuron(4, engine_module.NeuronState.RUPTURED, 0.5),
         ])
-        assert model._max_possible_dopamine() == pytest.approx(0.5)
+        assert model._max_possible_dopamine() == pytest.approx(1.4)
+
+    def test_external_population_is_partitioned_across_mpi_ranks(self, engine_module):
+        class TestComm:
+            def __init__(self, rank, size):
+                self.rank = rank
+                self.size = size
+            def Get_rank(self):
+                return self.rank
+            def Get_size(self):
+                return self.size
+            def allreduce(self, value, op=None):
+                return value
+
+        params = {
+            "stop.at": 5,
+            "random.seed": 21,
+            "world": {"width": 6, "height": 7, "buffer_size": 2},
+            "external.population": {"neurons": 5, "microglia": 5, "astrocytes": 5, "alpha": 5},
+        }
+
+        counts = []
+        for rank in range(4):
+            model = engine_module.ParkinsonModel(TestComm(rank, 4), params)
+            counts.append(len(model.context.agents()))
+
+        assert counts == [8, 4, 4, 4]
+        assert sum(counts) == 20
+
+    def test_environment_effects_are_summed_before_commit(self, engine_module):
+        class TestEffects:
+            debris_added = 1.0
+            debris_removed = 2.0
+            inflammation_added = 3.0
+            inflammation_removed = 4.0
+            dopamine_released = 5.0
+
+        class TestEnvironment:
+            def __init__(self):
+                self.effects = TestEffects()
+
+        class TestComm:
+            def allreduce(self, value, op=None):
+                return value * 4
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.comm = TestComm()
+        model.environment = TestEnvironment()
+
+        model._synchronize_environment_effects()
+
+        assert model.environment.effects.debris_added == pytest.approx(4.0)
+        assert model.environment.effects.debris_removed == pytest.approx(8.0)
+        assert model.environment.effects.inflammation_added == pytest.approx(12.0)
+        assert model.environment.effects.inflammation_removed == pytest.approx(16.0)
+        assert model.environment.effects.dopamine_released == pytest.approx(20.0)
 
     def test_run_loads_system_params_and_starts_model(self, engine_module, monkeypatch):
         captured = {}

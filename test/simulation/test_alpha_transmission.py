@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from repast4py.space import DiscretePoint
+import pytest
 from testhelpers import TestRng, import_any, make_alpha_config
 
 
@@ -190,7 +191,7 @@ class TestAlphaTransmission:
 
         neuron.do(SimpleNamespace(environment=environment))
 
-        assert environment.added_debris == 0.42
+        assert environment.added_debris == pytest.approx(0.42 + neuron.cfg.debris_release_rate)
         assert free_alpha in environment.grid.agent_registry
         assert aggregate in environment.grid.agent_registry
         assert cleared_alpha in neuron.grid.agent_registry

@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import pytest
 from repast4py.space import DiscretePoint
-from testhelpers import TestSubstantiaNigraLikeEnvironment, import_any
+from testhelpers import TestRng, TestSubstantiaNigraLikeEnvironment, import_any
 
 
 astrocyte_module = import_any("src.simulation.agents.astrocyte", "astrocyte")
@@ -90,6 +90,34 @@ class TestAstrocyte:
         astrocyte.state = AstrocyteState.REACTIVE
         astrocyte.action()
         assert astrocyte.pending_action == AstrocyteAction.INFLAMMATION
+
+    def test_reactive_transition_can_be_delayed_by_memory_probability(self):
+        config = make_config()
+        config.stress_memory_decay = 0.8
+        config.reactive_transition_rate = 0.25
+        astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=config)
+        astrocyte.rng = TestRng(random_value=0.9)
+        astrocyte.last_perception = astrocyte_module.AstrocytePerception(
+            position=None,
+            inflammation_level=1.0,
+            extracellular_debris=0.0,
+        )
+
+        astrocyte.next()
+
+        assert astrocyte.state == AstrocyteState.SUPPORTIVE
+        assert 0.0 < astrocyte.stress_memory < 1.0
+
+    def test_reactive_astrocyte_can_remain_supportive_until_memory_is_high(self):
+        config = make_config()
+        config.inflammatory_memory_threshold = 0.6
+        astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=config)
+        astrocyte.state = AstrocyteState.REACTIVE
+        astrocyte.stress_memory = 0.2
+
+        astrocyte.action()
+
+        assert astrocyte.pending_action == AstrocyteAction.SUPPORT
 
     def test_do_support_removes_inflammation(self):
         astrocyte = Astrocyte(local_id=1, rank=0, type_id=2, config=make_config())

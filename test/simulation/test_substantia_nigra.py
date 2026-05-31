@@ -77,6 +77,32 @@ class TestSubstantiaNigra:
         assert environment.scalars.inflammation_level == 1.0
         assert environment.scalars.dopamine_output == 1.0
 
+    def test_commit_effects_can_saturate_population_sums(self):
+        config = SNEnvironmentConfig(
+            initial_debris=0.0,
+            initial_inflammation=0.0,
+            initial_dopamine=0.0,
+            debris_decay=0.0,
+            inflammation_decay=0.0,
+            dopamine_smoothing=1.0,
+            debris_added_max_delta=0.1,
+            debris_removed_max_delta=0.1,
+            debris_effect_scale=1.0,
+            inflammation_added_max_delta=0.2,
+            inflammation_removed_max_delta=0.2,
+            inflammation_effect_scale=1.0,
+        )
+        environment = SubstantiaNigra(TestRepastGrid(), config)
+
+        environment.add_debris(100.0)
+        environment.add_inflammation(100.0)
+        environment.commit_effects(max_possible_dopamine=1.0)
+
+        assert environment.scalars.extracellular_debris == pytest.approx(0.1)
+        assert environment.scalars.inflammation_level == pytest.approx(0.2)
+        assert environment.last_committed_effects.debris_added == pytest.approx(0.1)
+        assert environment.last_committed_effects.inflammation_added == pytest.approx(0.2)
+
     def test_grid_wrappers_delegate_position_and_agents_at(self):
         repast_grid = TestRepastGrid()
         environment = SubstantiaNigra(repast_grid, make_config())

@@ -105,8 +105,6 @@ class InitializationLogger:
         )
         self._records.append(record)
         self._update_manifest(record)
-        with self.agents_path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(safe_serialize(record), ensure_ascii=False, sort_keys=True) + "\n")
 
     def close(self) -> None:
         """Write manifest and compact summary."""
@@ -147,6 +145,9 @@ class InitializationLogger:
                 neurons[record["owner_uid"]].setdefault("internal_agents", {}).setdefault(agent_class, []).append(record["uid"])
             elif not record.get("owner_uid"):
                 extracellular_agents.setdefault(agent_class, []).append(record["uid"])
+        with self.agents_path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(safe_serialize(record), ensure_ascii=False, sort_keys=True) + "\n")
         manifest = {
             "run_id": self.run_id,
             "logger_schema_version": self.schema_version,

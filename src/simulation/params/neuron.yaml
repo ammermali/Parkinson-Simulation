@@ -12,26 +12,27 @@ thresholds:
     mean: 0.6
     std: 0.05
   alpha_load_release_threshold:
-    mean: 0.02
-    std: 0.005
-  low_stress_threshold:
-    mean: 0.05
+    mean: 0.08
     std: 0.01
-  compromised_threshold: 0.3
-  apoptotic_threshold: 0.6
-  ruptured_threshold: 0.9
+  low_stress_threshold:
+    mean: 0.12
+    std: 0.02
+  compromised_threshold: 0.35
+  apoptotic_threshold: 0.7
+  ruptured_threshold: 0.95
 
 damage:
-  damage_accumulation_rate: 1.0
-  damage_recovery_rate: 0.1
-  inflammation_damage_weight: 0.4
+  damage_accumulation_rate: 0.25
+  damage_recovery_rate: 0.02
+  max_damage_increment_per_tick: 0.08
+  inflammation_damage_weight: 0.35
   debris_damage_weight: 0.3
-  alpha_damage_weight: 0.3
+  alpha_damage_weight: 0.35
 
 rates:
   dopamine_release_rate: 0.2
-  stress_inflammation_release_rate: 0.15
-  debris_release_rate: 0.25
+  stress_inflammation_release_rate: 0.04
+  debris_release_rate: 0.1
 
 alpha:
   alpha_absorption_rate: 0.1

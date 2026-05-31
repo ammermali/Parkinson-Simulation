@@ -27,6 +27,7 @@ class NeuronAction(str, AdaptiveAgentAction):
     DUMP_DEBRIS = "dump_debris"
     A_ALPHASYNUCLEIN = "absorb_alphasynuclein"
     STRESS = "signal_stress"
+    IDLE = "idle"
 
 # Perception
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class NeuronConfig:
     debris_release_rate: float
     alpha_absorption_rate: float
     alpha_release_amount: float
+    max_damage_increment_per_tick: float = 1.0
 
 @dataclass
 class NeuronInternalConfig:
@@ -131,6 +133,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
         # Cumulative value for cell damage
         self.cell_damage: float = 0.0
+        self._rupture_payload_released = False
 
         # Environmental state
         self.internal_cfg = internal_config or NeuronInternalConfig()
@@ -177,6 +180,9 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         if self.last_perception is None:
             raise RuntimeError()
         old_state = self.state
+        if old_state == NeuronState.RUPTURED:
+            self.cell_damage = max(self.cell_damage, self.cfg.ruptured_threshold)
+            return self.state
         p = self.last_perception
         external_stress = self._compute_external_stress(p)
         internal_damage = p.internal_damage
@@ -186,7 +192,11 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         if total_stress <= self.cfg.low_stress_threshold:
             self.cell_damage = clamp(self.cell_damage - self.cfg.damage_recovery_rate)
         else:
-            self.cell_damage = clamp(self.cell_damage + total_stress * self.cfg.damage_accumulation_rate)
+            damage_increment = min(
+                total_stress * self.cfg.damage_accumulation_rate,
+                self.cfg.max_damage_increment_per_tick
+            )
+            self.cell_damage = clamp(self.cell_damage + damage_increment)
 
         if self.cell_damage >= self.cfg.ruptured_threshold:
             self.state = NeuronState.RUPTURED
@@ -236,7 +246,10 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             raise RuntimeError()
         p = self.last_perception
         if self.state == NeuronState.RUPTURED:
-            self.pending_action = NeuronAction.DUMP_DEBRIS
+            if self._rupture_payload_released:
+                self.pending_action = NeuronAction.IDLE
+            else:
+                self.pending_action = NeuronAction.DUMP_DEBRIS
 
         elif self.state != NeuronState.APOPTOTIC and p.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
             self.pending_action = NeuronAction.A_ALPHASYNUCLEIN
@@ -289,12 +302,13 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
                     "neuron_stress_inflammation_release",
                 )
         elif self.pending_action == NeuronAction.DUMP_DEBRIS:
-            debris = self.internal_scalars.intracellular_debris
-            env.add_debris(self.internal_scalars.intracellular_debris)
+            debris = self._dump_debris_payload()
+            if debris > 0.0:
+                env.add_debris(debris)
             self.internal_scalars.intracellular_debris = 0.0
             released = self.release_alpha(model)
             logger = causal_logger_from(self)
-            if logger is not None:
+            if logger is not None and debris > 0.0:
                 logger.field_effect(
                     self,
                     self.pending_action,
@@ -307,11 +321,19 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.absorb_alpha(model)
         elif self.pending_action == NeuronAction.R_ALPHASYNUCLEIN:
             self.release_alpha(model)
+        elif self.pending_action == NeuronAction.IDLE:
+            return
 
     def step(self, model):
         """Run one intracellular phase pass followed by the neuron macro step."""
 
         bind_causal_logger(self, model)
+        if self.state == NeuronState.RUPTURED:
+            self.begin_tick()
+            self.see(model)
+            self.action()
+            self.do(model)
+            return
         self.begin_tick()
         internal_agents = [
             agent
@@ -365,6 +387,22 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         """Combine extracellular inflammatory, debris and alpha stress."""
 
         return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
+
+    def _dump_debris_payload(self) -> float:
+        """Return debris released by a ruptured neuron in this action.
+
+        Intracellular debris is released whenever present. The configured
+        rupture payload is released only once, so a ruptured neuron does not
+        create an infinite debris source after it has already spilled its
+        contents.
+        """
+
+        if self._rupture_payload_released:
+            return 0.0
+        payload = self.internal_scalars.intracellular_debris
+        payload += self.cfg.debris_release_rate
+        self._rupture_payload_released = True
+        return payload
 
     def compute_alpha_load(self) -> float:
         """Compute total intracellular alpha pathology load over grid capacity."""

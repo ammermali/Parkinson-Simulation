@@ -205,6 +205,14 @@ class TestNeuron:
         neuron.action()
         assert neuron.pending_action == NeuronAction.DUMP_DEBRIS
 
+    def test_action_idles_ruptured_neuron_after_one_spill(self):
+        neuron = make_neuron()
+        neuron.state = NeuronState.RUPTURED
+        neuron._rupture_payload_released = True
+        neuron.last_perception = make_perception(nearby_alpha=1.0, alpha_load=1.0)
+        neuron.action()
+        assert neuron.pending_action == NeuronAction.IDLE
+
     def test_action_absorbs_alpha_when_nearby_alpha_is_high_and_not_apoptotic(self):
         neuron = make_neuron()
         neuron.state = NeuronState.HEALTHY
@@ -280,9 +288,11 @@ class TestNeuron:
         neuron.pending_action = NeuronAction.DUMP_DEBRIS
 
         neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
+        neuron.internal_scalars.intracellular_debris = 0.5
         neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
 
         assert environment.added_debris == pytest.approx(neuron.cfg.debris_release_rate)
+        assert neuron.internal_scalars.intracellular_debris == 0.0
 
     def test_begin_tick_resets_internal_effects(self):
         neuron = make_neuron()
@@ -372,3 +382,16 @@ class TestNeuron:
             "first:do",
             "second:do"
         ]
+
+    def test_step_skips_intracellular_agents_after_rupture_spill(self):
+        neuron = make_neuron()
+        neuron.state = NeuronState.RUPTURED
+        neuron._rupture_payload_released = True
+        log = []
+        internal = PhaseAgent(101, log, "internal")
+        neuron.add_agent(internal, DiscretePoint(0, 0))
+        environment = TestSubstantiaNigraLikeEnvironment(position=DiscretePoint(2, 2))
+        neuron.step(SimpleNamespace(environment=environment, rng=TestRng()))
+        assert log == []
+        assert neuron.pending_action == NeuronAction.IDLE
+        assert environment.added_debris == 0.0

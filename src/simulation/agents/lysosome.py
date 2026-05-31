@@ -6,6 +6,7 @@ from src.simulation.agents.aggregate import AlphaAggregate, AggregateState
 from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from src.simulation.agents.mitochondrion import Mitochondrion
 from src.simulation.utils import clamp, RNG
+from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
 
 # Internal State Set
 class LysosomeState(str, AdaptiveAgentState):
@@ -91,6 +92,8 @@ class Lysosome(AdaptiveAgent):
         self.degradation_ticks_remaining: int = 0
         self.last_perception: Optional[LysosomePerception] = None
         self.pending_action: Optional[LysosomeAction] = None
+        self.last_transition_sample = {}
+        self.last_degradation_sample = {}
         self.last_transition: tuple[LysosomeState, LysosomeState] = (
             self.state,
             self.state
@@ -100,6 +103,7 @@ class Lysosome(AdaptiveAgent):
     def see(self, model) -> LysosomePerception:
         """Read the current assignment and pressure in the owning neuron."""
 
+        bind_causal_logger(self, model)
         habitat = self.owner_neuron
         position = habitat.position_of(self)
         task = habitat.target_for(self)
@@ -138,6 +142,7 @@ class Lysosome(AdaptiveAgent):
         if self.last_perception is None:
             raise RuntimeError()
         old_state = self.state
+        self.last_transition_sample = {}
         p = self.last_perception
         if self.state == LysosomeState.INACTIVE:
             self.state = self._sample_with_stay({
@@ -150,11 +155,20 @@ class Lysosome(AdaptiveAgent):
         elif self.state == LysosomeState.OVERWHELMED:
             self.state = LysosomeState.OVERWHELMED
         self.last_transition = (old_state, self.state)
+        logger = causal_logger_from(self)
+        if logger is not None and old_state != self.state:
+            logger.state_transition(
+                self,
+                old_state,
+                self.state,
+                "lysosome_activity_transition",
+                owner=self.owner_neuron,
+                compartment="Intracellular"
+            )
         return self.state
 
     def action(self) -> LysosomeAction:
         """Choose the next operation from the current state and assignment."""
-
         if self.state == LysosomeState.INACTIVE:
             self.pending_action = LysosomeAction.SCAN
         elif self.state == LysosomeState.ACTIVE:
@@ -164,6 +178,15 @@ class Lysosome(AdaptiveAgent):
                 self.pending_action = LysosomeAction.DEGRADE
         elif self.state == LysosomeState.OVERWHELMED:
             self.pending_action = LysosomeAction.IDLE
+        logger = causal_logger_from(self)
+        if logger is not None and self.pending_action is not None:
+            logger.action_selection(
+                self,
+                self.pending_action,
+                "lysosome_state_action_policy",
+                owner=self.owner_neuron,
+                compartment="Intracellular"
+            )
         return self.pending_action
 
     def do(self, model):
@@ -214,6 +237,10 @@ class Lysosome(AdaptiveAgent):
             total = 1.0
         probabilities[self.state] = 1.0 - total
         draw = self.rng.random()
+        self.last_transition_sample = {
+            "probabilities": probabilities,
+            "draw": draw
+        }
         cumulative = 0.0
         for state, probability in probabilities.items():
             cumulative += probability
@@ -243,6 +270,15 @@ class Lysosome(AdaptiveAgent):
         target = self.rng.choice(targets)
         if habitat.assign_degradation_target(self, target):
             self.target = target
+            logger = causal_logger_from(self)
+            if logger is not None:
+                logger.target_assignment(
+                    self,
+                    target,
+                    "lysosome_selects_degradation_target",
+                    rule_id="LYSOSOME_TARGET_ASSIGNMENT",
+                    owner=self.owner_neuron
+                )
 
     def _degrade_target(self, habitat):
         """Attempt to degrade the assigned target.
@@ -273,6 +309,11 @@ class Lysosome(AdaptiveAgent):
         overwhelm_probability = self.pr_overwhelmed_by_target(target)
         success_probability = min(self.pr_degradation_success(target), 1.0 - overwhelm_probability)
         draw = self.rng.random()
+        self.last_degradation_sample = {
+            "overwhelm_probability": overwhelm_probability,
+            "success_probability": success_probability,
+            "draw": draw
+        }
         if draw < overwhelm_probability:
             self._become_overwhelmed(habitat, target)
             return
@@ -285,20 +326,46 @@ class Lysosome(AdaptiveAgent):
         """Apply the successful cleanup effect for the target type."""
         if isinstance(target, AlphaAggregate):
             habitat.remove_agent(target)
+            outcome = "aggregate_removed"
         elif isinstance(target, Mitochondrion):
             target.repair_by_lysosome()
             habitat.unregister_degradation_target(target)
+            outcome = "mitochondrion_repaired"
         elif isinstance(target, AlphaSynuclein):
             target.mark_cleared()
             habitat.unregister_degradation_target(target)
+            outcome = "protein_cleared"
         else:
             habitat.remove_agent(target)
+            outcome = "target_removed"
+        logger = causal_logger_from(self)
+        if logger is not None:
+            logger.degradation(
+                self,
+                target,
+                "lysosome_degradation_success",
+                outcome=outcome,
+                probability=self.last_degradation_sample.get("success_probability"),
+                rng_value=self.last_degradation_sample.get("draw"),
+                owner=self.owner_neuron
+            )
         self.target = None
         self._reset_degradation_work()
 
     def _fail_degradation(self, habitat, target: AdaptiveAgent):
         """Return a failed target to the neuron's available target pool."""
         habitat.clear_degradation_assignment(self, requeue_target=True)
+        logger = causal_logger_from(self)
+        if logger is not None:
+            logger.degradation(
+                self,
+                target,
+                "lysosome_degradation_failure",
+                outcome="failed_requeued",
+                probability=self.last_degradation_sample.get("success_probability"),
+                rng_value=self.last_degradation_sample.get("draw"),
+                owner=self.owner_neuron
+            )
         self.target = None
         self._reset_degradation_work()
 
@@ -372,8 +439,28 @@ class Lysosome(AdaptiveAgent):
 
     def _become_overwhelmed(self, habitat, target: AdaptiveAgent):
         """Mark this lysosome as non-functional after Lewy body contact."""
+        old_state = self.state
         self.state = LysosomeState.OVERWHELMED
         self.pending_action = LysosomeAction.IDLE
         self.target = None
         self._reset_degradation_work()
         habitat.clear_degradation_assignment(self, requeue_target=True)
+        logger = causal_logger_from(self)
+        if logger is not None:
+            logger.degradation(
+                self,
+                target,
+                "lysosome_overwhelmed_by_target",
+                outcome="overwhelmed",
+                probability=self.last_degradation_sample.get("overwhelm_probability"),
+                rng_value=self.last_degradation_sample.get("draw"),
+                owner=self.owner_neuron
+            )
+            logger.state_transition(
+                self,
+                old_state,
+                self.state,
+                "lysosome_overwhelmed_by_target",
+                owner=self.owner_neuron,
+                compartment="Intracellular"
+            )

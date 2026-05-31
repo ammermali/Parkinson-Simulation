@@ -45,6 +45,7 @@ from src.simulation.agents.neuron import Neuron, NeuronState
 from src.simulation.substantia_nigra import SubstantiaNigra
 from src.simulation.utils import Params, RNG
 from src.simulation.utils.config_factory import ConfigFactory
+from src.simulation.logger import CausalTraceLogger, InitializationLogger
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class ParkinsonModel:
         # neuron config dataclasses and for initial intracellular population.
         self.neuron_params = Params("neuron")
         self.neuron_param_values = self.neuron_params.as_dict()
+        self.tick_count = 0
         # SharedContext owns the active agents for this rank.
         self.context = ctx.SharedContext(comm)
         # Schedule runner calls self.step() repeatedly and stops at stop.at.
@@ -103,9 +105,13 @@ class ParkinsonModel:
         self.context.add_projection(self.grid)
         # SubstantiaNigra is the biological wrapper around the Repast grid.
         self.environment = SubstantiaNigra(grid=self.grid, config=ConfigFactory.build_substantia_nigra_config())
+        # Runtime causal traces and initialization logs are intentionally
+        # separate: G0 edges stay compact, while initial conditions stay rich.
+        self.causal_logger, self.initialization_logger = self._create_loggers(params)
         # Local ids only need to be unique per rank and type id.
         self._next_local_id = 0
         self._create_agents(params)
+        self.initialization_logger.close()
 
     # Initialization
 
@@ -211,7 +217,7 @@ class ParkinsonModel:
                 compartment=AlphaSynucleinCompartment.INTRACELLULAR,
                 owner_neuron=neuron
             )
-            neuron.add_agent(alpha, self._internal_point(neuron, index))
+            self._add_internal_agent(neuron, alpha, self._internal_point(neuron, index))
         for index in range(mitochondria_count):
             mitochondrion = Mitochondrion(
                 local_id=self._new_id(),
@@ -221,7 +227,7 @@ class ParkinsonModel:
                     rng=self.config_rng),
                 owner_neuron=neuron
             )
-            neuron.add_agent(mitochondrion, self._internal_point(neuron, alpha_count + index))
+            self._add_internal_agent(neuron, mitochondrion, self._internal_point(neuron, alpha_count + index))
 
         for index in range(lysosome_count):
             lysosome = Lysosome(
@@ -231,10 +237,7 @@ class ParkinsonModel:
                 owner_neuron=neuron,
                 config=ConfigFactory.build_lysosome_config()
             )
-            neuron.add_agent(
-                lysosome,
-                self._internal_point(neuron, alpha_count + mitochondria_count + index),
-            )
+            self._add_internal_agent(neuron, lysosome, self._internal_point(neuron, alpha_count + mitochondria_count + index))
 
     # Simulation loop
 
@@ -249,6 +252,10 @@ class ParkinsonModel:
         Neurons run their own intracellular phase inside Neuron.step()
         That keeps internal alpha, aggregate, mitochondrion and lysosome logic
         synchronized before the neuron itself acts on the extracellular space."""
+        self.tick_count = getattr(self, "tick_count", 0) + 1
+        causal_logger = getattr(self, "causal_logger", None)
+        if causal_logger is not None:
+            causal_logger.set_tick(self.tick_count)
         self.environment.begin_tick()
         # Use a list snapshot because agents can release or absorb alpha during
         # a step. Iterating over the live context while it mutates would be
@@ -260,11 +267,17 @@ class ParkinsonModel:
         # Future distributed runs that move agents across MPI rank boundaries
         # should synchronize here with a restore_agent function.
         # self.context.synchronize(restore_agent) # TODO ?
+        self._record_scalar_tick()
         self._log_tick()
 
     def start(self) -> None:
         """Start the Repast schedule runner."""
-        self.runner.execute()
+        try:
+            self.runner.execute()
+        finally:
+            causal_logger = getattr(self, "causal_logger", None)
+            if causal_logger is not None:
+                causal_logger.close()
 
     # Helpers
 
@@ -287,6 +300,13 @@ class ParkinsonModel:
         # The biological grid API still queries the grid as source of truth.
         agent.pt = point
         self.environment.add_agent(agent, point)
+        self.initialization_logger.record_agent(agent, position=point, raw_details={"habitat": "SubstantiaNigra"})
+
+    def _add_internal_agent(self, neuron: Neuron, agent, point: DiscretePoint) -> None:
+        """Add an intracellular agent and log its initial placement."""
+
+        neuron.add_agent(agent, point)
+        self.initialization_logger.record_agent(agent, position=point, owner=neuron, target=neuron, raw_details={"habitat": "Neuron"})
 
     def _internal_point(self, neuron: Neuron, index: int) -> DiscretePoint:
         """Return a deterministic initial point inside a neuron's local grid.
@@ -314,9 +334,64 @@ class ParkinsonModel:
                 total += agent.cfg.dopamine_release_rate
         return total
 
-    # TODO furtherly expand the log system
+    def _create_loggers(self, params: dict[str, Any]) -> tuple[CausalTraceLogger, InitializationLogger]:
+        """Create separated causal and initialization loggers."""
+
+        output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", "src/simulation/output/logs"))
+        run_id = str(_param(params, "logging.run_id", f"run_seed_{self.seed}"))
+        agent_type_map = {
+            self.agent_type.NEURON: "Neuron",
+            self.agent_type.MICROGLIA: "Microglia",
+            self.agent_type.ASTROCYTE: "Astrocyte",
+            self.agent_type.ALPHA: "AlphaSynuclein",
+            self.agent_type.MITOCHONDRION: "Mitochondrion",
+            self.agent_type.LYSOSOME: "Lysosome"
+        }
+        causal_logger = CausalTraceLogger(
+            run_id=run_id,
+            comm=self.comm,
+            rank=self.rank,
+            output_dir=output_dir,
+            enabled=bool(_param(params, "logging.causal.enabled", _param(params, "logging.enabled", False))),
+            agent_type_map=agent_type_map,
+            params=params
+        )
+        initialization_logger = InitializationLogger(
+            run_id=run_id,
+            comm=self.comm,
+            rank=self.rank,
+            output_dir=output_dir,
+            enabled=bool(_param(params, "logging.initialization.enabled", _param(params, "logging.enabled", False)))
+        )
+        return causal_logger, initialization_logger
+
+    def _resolve_output_dir(self, value: str) -> Path:
+        """Resolve relative output paths from the project root."""
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return Path(__file__).resolve().parents[2] / path
+
+    def _record_scalar_tick(self) -> None:
+        """Record one per-tick scalar snapshot in the structured event log."""
+        logger = getattr(self, "causal_logger", None)
+        if logger is None:
+            return
+        scalars = self.environment.scalars
+        effects = self.environment.effects
+        logger.snapshot_field("extracellular_debris", scalars.extracellular_debris)
+        logger.snapshot_field("inflammation_level", scalars.inflammation_level)
+        logger.snapshot_field("dopamine_output", scalars.dopamine_output)
+        logger.buffer_commit("debris_added", "extracellular_debris", effects.debris_added, "positive", "sn_debris_added_commit")
+        logger.buffer_commit("debris_removed", "extracellular_debris", effects.debris_removed, "negative", "sn_debris_removed_commit")
+        logger.buffer_commit("inflammation_added", "inflammation_level", effects.inflammation_added, "positive", "sn_inflammation_added_commit")
+        logger.buffer_commit("inflammation_removed", "inflammation_level", effects.inflammation_removed, "negative", "sn_inflammation_removed_commit")
+        logger.buffer_commit("dopamine_released", "dopamine_output", effects.dopamine_released, "positive", "sn_dopamine_release_commit")
+
     def _log_tick(self) -> None:
         """Print a compact scalar log from rank 0 only."""
+        if not bool(_param(getattr(self, "params", {}), "logging.scalar_stdout", True)):
+            return
         if self.rank != 0:
             return
         scalars = self.environment.scalars

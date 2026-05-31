@@ -4,6 +4,7 @@ from src.simulation.agents.adaptiveagent import AdaptiveAgent
 from src.simulation.agents.aggregate import AlphaAggregate, AggregateState
 from src.simulation.agents.alphasynuclein import AlphaSynuclein, AlphaSynucleinState
 from src.simulation.utils import RNG, clamp
+from src.simulation.logger.causal_trace_logger import causal_logger_from
 
 class AggregateRegistry:
     """Centralization of Alpha-Synuclein lifecycle.
@@ -35,6 +36,8 @@ class AggregateRegistry:
                 for agent in agents
                 if isinstance(agent, AlphaAggregate)
             ]
+            for aggregate in aggregates:
+                aggregate.causal_logger = getattr(habitat, "causal_logger", None)
             self._process_cell(habitat, point, free_candidates, aggregates)
 
     def aggregates(self) -> list[AlphaAggregate]:
@@ -77,6 +80,7 @@ class AggregateRegistry:
             state=state,
             owner_neuron=habitat,
         )
+        aggregate.causal_logger = getattr(habitat, "causal_logger", None)
         self._aggregates[aggregate_id] = aggregate
         self._members[aggregate_id] = set()
         habitat.add_agent(aggregate, point)
@@ -98,12 +102,32 @@ class AggregateRegistry:
             habitat.remove_agent(alpha)
         self._members[aggregate.aggregate_id].add(alpha)
         aggregate.add_member(self._member_id(alpha), alpha)
+        old_state = alpha.state
         member_state = (
             AlphaSynucleinState.LEWY_BODY
             if aggregate.state == AggregateState.LEWY_BODY
             else AlphaSynucleinState.OLIGOMER
         )
         alpha.join_aggregate(aggregate.aggregate_id, member_state)
+        logger = causal_logger_from(habitat)
+        if logger is not None:
+            logger.aggregation(
+                alpha,
+                aggregate,
+                "alpha_added_to_aggregate",
+                aggregate_id=aggregate.aggregate_id,
+                owner=habitat,
+                outcome="member_added"
+            )
+            logger.state_transition(
+                alpha,
+                old_state,
+                alpha.state,
+                "alpha_state_by_aggregation",
+                rule_id="ALPHA_AGGREGATION",
+                owner=habitat,
+                compartment=getattr(alpha, "compartment", None)
+            )
         return True
 
     def merge_aggregates(self, habitat, target: AlphaAggregate, source: AlphaAggregate) -> bool:
@@ -128,12 +152,34 @@ class AggregateRegistry:
         del self._aggregates[source.aggregate_id]
         del self._members[source.aggregate_id]
         self._register_degradation_target(habitat, target)
+        logger = causal_logger_from(habitat)
+        if logger is not None:
+            logger.aggregation(
+                source,
+                target,
+                "aggregate_merge",
+                aggregate_id=target.aggregate_id,
+                owner=habitat,
+                outcome="merged"
+            )
         return True
 
     def mature_to_lewy_body(self, aggregate: AlphaAggregate):
         """Promote an oligomer and every member protein to LewyBody."""
+        old_state = aggregate.state
         aggregate.mature_to_lewy_body()
         self._set_members_state(aggregate, AlphaSynucleinState.LEWY_BODY)
+        logger = causal_logger_from(aggregate)
+        if logger is not None:
+            logger.state_transition(
+                aggregate,
+                old_state,
+                aggregate.state,
+                "aggregate_matures_to_lewy_body",
+                rule_id="AGGREGATE_MATURES_LEWY_BODY",
+                owner=aggregate.owner_neuron,
+                compartment="Intracellular"
+            )
 
     def remove(self, agent: AdaptiveAgent):
         """Remove aggregate bookkeeping for a cleared aggregate or member."""
@@ -165,6 +211,7 @@ class AggregateRegistry:
             member.join_aggregate(aggregate.aggregate_id, member_state)
         self._members[aggregate.aggregate_id] = members
         aggregate.owner_neuron = habitat
+        aggregate.causal_logger = getattr(habitat, "causal_logger", None)
         self._register_degradation_target(habitat, aggregate)
 
     def new_id(self) -> int:
@@ -235,7 +282,9 @@ class AggregateRegistry:
     def _should_mature(self, aggregate: AlphaAggregate) -> bool:
         """Return whether an oligomer matures into a Lewy body this pass."""
         probability = clamp(aggregate.size / self.lewy_body_size_threshold)
-        return self.rng.random() < probability
+        draw = self.rng.random()
+        result = draw < probability
+        return result
 
     def _largest(self, aggregates: Iterable[AlphaAggregate]) -> AlphaAggregate:
         """Choose the largest aggregate as merge target."""

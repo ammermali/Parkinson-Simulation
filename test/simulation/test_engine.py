@@ -445,9 +445,41 @@ class TestParkinsonModel:
         assert step_agent.calls == 1
         assert model.context._agents[1].calls == 0
 
+    def test_loggers_are_configured_from_system_params(self, engine_module, tmp_path):
+        params = {
+            "stop.at": 2,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "logging": {
+                "enabled": True,
+                "output_dir": str(tmp_path),
+                "scalar_stdout": False
+            }}
+        model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+        assert model.causal_logger.enabled is True
+        assert model.initialization_logger.enabled is True
+        assert model.causal_logger.output_dir == tmp_path
+        assert model.initialization_logger.output_dir == tmp_path
+
+    def test_step_records_g0_field_nodes_when_causal_logging_is_enabled(self, engine_module, tmp_path):
+        params = {
+            "stop.at": 2,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "logging": {
+                "enabled": True,
+                "output_dir": str(tmp_path),
+                "scalar_stdout": False}}
+        model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+        model.step()
+        rows = (tmp_path / "g0_nodes.jsonl").read_text(encoding="utf-8").splitlines()
+        assert any('"field": "extracellular_debris"' in row for row in rows)
+        assert (tmp_path / "run_metadata.json").exists()
+
     def test_max_possible_dopamine_excludes_apoptotic_and_ruptured_neurons(self, engine_module):
         neuron_module = importlib.import_module("src.simulation.agents.neuron")
-
         def make_neuron(local_id, state, dopamine_release_rate):
             config = neuron_module.NeuronConfig(
                 per_radius=1,
@@ -477,10 +509,8 @@ class TestParkinsonModel:
         class TestContext:
             def __init__(self, agents):
                 self._agents = agents
-
             def agents(self):
                 return list(self._agents)
-
         model = object.__new__(engine_module.ParkinsonModel)
         model.context = TestContext([
             make_neuron(1, engine_module.NeuronState.HEALTHY, 0.2),
@@ -488,24 +518,18 @@ class TestParkinsonModel:
             make_neuron(3, engine_module.NeuronState.APOPTOTIC, 0.4),
             make_neuron(4, engine_module.NeuronState.RUPTURED, 0.5),
         ])
-
         assert model._max_possible_dopamine() == pytest.approx(0.5)
 
     def test_run_loads_system_params_and_starts_model(self, engine_module, monkeypatch):
         captured = {}
-
         class TestModel:
             def __init__(self, comm, params):
                 captured["comm"] = comm
                 captured["params"] = params
-
             def start(self):
                 captured["started"] = True
-
         monkeypatch.setattr(engine_module, "ParkinsonModel", TestModel)
-
         engine_module.run()
-
         assert captured["comm"] is engine_module.MPI.COMM_WORLD
         assert captured["params"]["stop.at"] == 9
         assert captured["started"] is True

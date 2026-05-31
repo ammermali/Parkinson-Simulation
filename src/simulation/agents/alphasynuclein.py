@@ -3,9 +3,9 @@ from enum import Enum
 from typing import List, Optional
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentAction, AdaptiveAgentPerception, AdaptiveAgentState
 from repast4py.space import DiscretePoint
-
 from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.utils import RNG, clamp
+from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from, uid_of
 
 class AlphaSynucleinState(str, AdaptiveAgentState):
     """State of a single alpha-synuclein protein."""
@@ -87,6 +87,7 @@ class AlphaSynuclein(AdaptiveAgent):
 
     def see(self, model) -> AlphaSynucleinPerception:
         """Read local stress and nearby agents from the current habitat."""
+        bind_causal_logger(self, model)
         habitat = self._habitat(model)
         position = habitat.position_of(self)
         if self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
@@ -135,16 +136,76 @@ class AlphaSynuclein(AdaptiveAgent):
         """
         if self.last_perception is None:
             raise RuntimeError()
+        old_state = self.state
         self.wants_oligomerization = False
         if not self.is_free or self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
             return self.state
         p = self.last_perception
         draw = self.rng.random()
         if self.state == AlphaSynucleinState.MONOMER:
-            if p.oxidative_stress >= self.cfg.oxidative_stress_high_threshold and draw < p.oxidative_stress:
+            probability = p.oxidative_stress if p.oxidative_stress >= self.cfg.oxidative_stress_high_threshold else 0.0
+            if draw < probability:
                 self.state = AlphaSynucleinState.MISFOLDED
+                logger = causal_logger_from(self)
+                if logger is not None:
+                    source = logger.internal_field_node(
+                        self.owner_neuron,
+                        "oxidative_stress",
+                        "1_perception",
+                        p.oxidative_stress
+                    )
+                    logger.threshold_trigger(
+                        source,
+                        self,
+                        self.state,
+                        "alpha_misfolding_by_oxidative_stress",
+                        "ALPHA_MISFOLDING_OXIDATIVE_STRESS",
+                        "oxidative_stress >= oxidative_stress_high_threshold",
+                        owner=self.owner_neuron,
+                        compartment=self.compartment
+                    )
+                    logger.state_transition(
+                        self,
+                        old_state,
+                        self.state,
+                        "alpha_misfolding",
+                        rule_id="ALPHA_MISFOLDING_OXIDATIVE_STRESS",
+                        probability=probability,
+                        rng_value=draw,
+                        owner=self.owner_neuron,
+                        compartment=self.compartment
+                    )
         elif self.state == AlphaSynucleinState.MISFOLDED:
-            self.wants_oligomerization = draw < self.pr_oligomerization()
+            probability = self.pr_oligomerization()
+            self.wants_oligomerization = draw < probability
+            if self.wants_oligomerization:
+                logger = causal_logger_from(self)
+                if logger is not None:
+                    source = logger.internal_field_node(
+                        self.owner_neuron,
+                        "local_aggregate_density",
+                        "1_perception",
+                        p.local_aggregate_density
+                    )
+                    action = logger.action_node(
+                        self,
+                        "wants_oligomerization",
+                        "3_action_selection",
+                        owner=self.owner_neuron,
+                        compartment=self.compartment
+                    )
+                    logger.edge(
+                        source,
+                        action,
+                        "action_selection",
+                        "alpha_oligomerization_intention",
+                        rule_id="ALPHA_OLIGOMERIZATION_INTENTION",
+                        probability=probability,
+                        rng_value=draw,
+                        outcome="selected",
+                        compartment=self.compartment,
+                        owner_uid=uid_of(self.owner_neuron)
+                    )
         return self.state
 
     def action(self) -> AlphaSynucleinAction:
@@ -168,7 +229,8 @@ class AlphaSynuclein(AdaptiveAgent):
         self._register_if_degradable(habitat)
         if self.pending_action == AlphaSynucleinAction.STAY:
             return
-        if self.rng.random() > self.cfg.move_probability:
+        draw = self.rng.random()
+        if draw > self.cfg.move_probability:
             return
         position = habitat.position_of(self)
         if position is None:
@@ -182,7 +244,8 @@ class AlphaSynuclein(AdaptiveAgent):
         )
         if not candidates:
             return
-        habitat.move_to(self, self.rng.choice(candidates))
+        new_position = self.rng.choice(candidates)
+        habitat.move_to(self, new_position)
 
     def join_aggregate(self, aggregate_id: int, state: AlphaSynucleinState):
         """Mark this protein as biologically contained in an aggregate."""

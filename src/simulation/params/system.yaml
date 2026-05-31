@@ -1,0 +1,23 @@
+stop.at: 500
+random.seed: 42
+
+external.population:
+  neurons: 5
+  microglia: 5
+  astrocytes: 5
+  alpha: 0
+
+world:
+  height: 10
+  width: 10
+  buffer_size: 2
+
+logging:
+  enabled: true
+  run_id: default_run
+  output_dir: src/simulation/output/logs
+  causal:
+    enabled: true
+  initialization:
+    enabled: true
+  scalar_stdout: true

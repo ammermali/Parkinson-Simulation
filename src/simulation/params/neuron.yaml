@@ -1,7 +1,3 @@
-grid:
-  height: 5
-  width: 5
-
 perception:
   per_radius: 1
 
@@ -40,3 +36,22 @@ rates:
 alpha:
   alpha_absorption_rate: 0.1
   alpha_release_amount: 0.05
+
+intracellular:
+  grid:
+    height: 5
+    width: 5
+  population:
+    alpha: 40
+    mitochondria: 10
+    lysosomes: 5
+  scalars:
+    energy_demand_baseline: 0.5
+  decay:
+    energy_demand_recovery_rate: 0.02
+    oxidative_stress_decay: 0.01
+    intracellular_debris_decay: 0.005
+  damage:
+    internal_damage_oxidative_weight: 0.4
+    internal_damage_aggregate_weight: 0.4
+    internal_damage_debris_weight: 0.2

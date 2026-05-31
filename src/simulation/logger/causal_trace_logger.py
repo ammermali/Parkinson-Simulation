@@ -104,18 +104,28 @@ class CausalTraceLogger:
         if not self.enabled:
             return
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.nodes_path.write_text("", encoding="utf-8")
+        self.edges_path.write_text("", encoding="utf-8")
         if self.rank == 0:
-            self.nodes_path.write_text("", encoding="utf-8")
-            self.edges_path.write_text("", encoding="utf-8")
+            self.merged_nodes_path.write_text("", encoding="utf-8")
+            self.merged_edges_path.write_text("", encoding="utf-8")
             self._write_metadata()
         self._barrier()
 
     @property
     def nodes_path(self) -> Path:
-        return self.output_dir / "g0_nodes.jsonl"
+        return self.output_dir / f"g0_nodes_rank{self.rank}.jsonl"
 
     @property
     def edges_path(self) -> Path:
+        return self.output_dir / f"g0_edges_rank{self.rank}.jsonl"
+
+    @property
+    def merged_nodes_path(self) -> Path:
+        return self.output_dir / "g0_nodes.jsonl"
+
+    @property
+    def merged_edges_path(self) -> Path:
         return self.output_dir / "g0_edges.jsonl"
 
     @property
@@ -333,8 +343,14 @@ class CausalTraceLogger:
         return f"edge_{self.rank}_{self._edge_index:08d}"
 
     def close(self) -> None:
-        if self.enabled and self.rank == 0:
+        if not self.enabled:
+            return
+        self._barrier()
+        if self.rank == 0:
+            self._merge_rank_files("g0_nodes_rank*.jsonl", self.merged_nodes_path)
+            self._merge_rank_files("g0_edges_rank*.jsonl", self.merged_edges_path)
             self._write_metadata()
+        self._barrier()
 
     def _write_node(self, node: CausalNode) -> None:
         if not self.enabled or node.node_id in self._seen_nodes:
@@ -366,10 +382,23 @@ class CausalTraceLogger:
             },
             "notes": [
                 "Runtime causal logs intentionally omit positions and raw perceptions.",
-                "Full initial positions and configurations are stored by InitializationLogger."
+                "Full initial positions and configurations are stored by InitializationLogger.",
+                "Initial AlphaSynuclein state nodes are written at tick 0 so non-reactive proteins remain visible in G0 analyses.",
+                "MPI ranks write rank-local JSONL files first; rank 0 merges them at close to keep JSONL rows atomic."
             ],
         }
         self.metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _merge_rank_files(self, pattern: str, destination: Path) -> None:
+        """Concatenate rank-local JSONL files into one analysis-friendly file."""
+        with destination.open("w", encoding="utf-8") as output:
+            for path in sorted(self.output_dir.glob(pattern), key=_rank_file_sort_key):
+                if not path.exists():
+                    continue
+                with path.open("r", encoding="utf-8") as stream:
+                    for line in stream:
+                        if line.strip():
+                            output.write(line if line.endswith("\n") else line + "\n")
 
     def _phase_order_valid(self, phase_from: str, phase_to: str) -> bool:
         return PHASE_INDEX[phase_from] <= PHASE_INDEX[phase_to]
@@ -453,18 +482,31 @@ def effect_sign(value: float) -> Optional[str]:
     return "neutral"
 
 
+def _rank_file_sort_key(path: Path) -> tuple[int, str]:
+    """Sort rank-local log files by numeric rank when possible."""
+    stem = path.stem
+    marker = "_rank"
+    if marker not in stem:
+        return (0, path.name)
+    suffix = stem.split(marker, 1)[1]
+    try:
+        return (int(suffix), path.name)
+    except ValueError:
+        return (0, path.name)
+
+
 def rule_map() -> dict[str, dict[str, str]]:
     return {
         "MICROGLIA_ACTIVATION_INFLAMMATION_HIGH": {
-            "description": "Microglia becomes Activated when inflammation exceeds its high threshold.",
+            "description": "Microglia can become Activated with probability proportional to inflammation pressure between its low and high thresholds.",
             "source": "Microglia.next"
         },
         "MICROGLIA_ACTIVATION_ALPHA_HIGH": {
-            "description": "Microglia becomes Activated when nearby alpha density exceeds its high threshold.",
+            "description": "Microglia can become Activated with probability proportional to nearby alpha pressure between its low and high thresholds.",
             "source": "Microglia.next"
         },
-        "MICROGLIA_CLEARING_DEBRIS_HIGH": {
-            "description": "Microglia becomes Clearing when extracellular debris exceeds its high threshold.",
+        "MICROGLIA_CLEARING_DEBRIS_PRESSURE": {
+            "description": "Microglia can become Clearing with probability proportional to extracellular debris pressure between its low and high thresholds.",
             "source": "Microglia.next"
         },
         "ASTROCYTE_REACTIVE_STRESS_HIGH": {
@@ -475,8 +517,8 @@ def rule_map() -> dict[str, dict[str, str]]:
             "description": "Neuron damage state changes after external and internal stress are combined.",
             "source": "Neuron.next"
         },
-        "ALPHA_MISFOLDING_OXIDATIVE_STRESS": {
-            "description": "Alpha-synuclein misfolds when oxidative stress crosses threshold and stochastic draw succeeds.",
+        "ALPHA_MISFOLDING": {
+            "description": "Alpha-synuclein misfolds from basal, oxidative-stress, or aggregate-seeded pressure when the stochastic draw succeeds.",
             "source": "AlphaSynuclein.next"
         },
         "ALPHA_AGGREGATION": {

@@ -20,13 +20,20 @@ class ConfigFactory:
         initial = params.section("initial")
         decay = params.section("decay")
         dopamine = params.section("dopamine")
+        effects = _optional_section(params, "effects")
         return SNEnvironmentConfig(
             initial_debris=_number(initial, "debris"),
             initial_inflammation=_number(initial, "inflammation"),
             initial_dopamine=_number(initial, "dopamine"),
             debris_decay=_number(decay, "debris"),
             inflammation_decay=_number(decay, "inflammation"),
-            dopamine_smoothing=_number(dopamine, "smoothing")
+            dopamine_smoothing=_number(dopamine, "smoothing"),
+            debris_added_max_delta=_optional_number(effects, "debris_added_max_delta"),
+            debris_removed_max_delta=_optional_number(effects, "debris_removed_max_delta"),
+            debris_effect_scale=_number_or(effects, "debris_effect_scale", 1.0),
+            inflammation_added_max_delta=_optional_number(effects, "inflammation_added_max_delta"),
+            inflammation_removed_max_delta=_optional_number(effects, "inflammation_removed_max_delta"),
+            inflammation_effect_scale=_number_or(effects, "inflammation_effect_scale", 1.0)
         )
 
     @staticmethod
@@ -37,6 +44,7 @@ class ConfigFactory:
         perception = params.section("perception")
         rates = params.section("rates")
         movement = params.section("movement")
+        dynamics = _optional_section(params, "dynamics")
         return MicrogliaConfig(
             per_radius=_integer(perception, "per_radius"),
             debris_high_threshold=_threshold(params, "debris_high_threshold", rng),
@@ -47,7 +55,10 @@ class ConfigFactory:
             nearby_alpha_low_threshold=_threshold(params, "nearby_alpha_low_threshold", rng),
             debris_clearance_rate=_number(rates, "debris_clearance_rate"),
             inflammation_release_rate=_number(rates, "inflammation_release_rate"),
-            move_probability=_number(movement, "move_probability")
+            move_probability=_number(movement, "move_probability"),
+            activation_transition_rate=_number_or(dynamics, "activation_transition_rate", 1.0),
+            clearing_transition_rate=_number_or(dynamics, "clearing_transition_rate", 1.0),
+            recovery_transition_rate=_number_or(dynamics, "recovery_transition_rate", 1.0)
         )
 
     @staticmethod
@@ -56,13 +67,20 @@ class ConfigFactory:
         params = _coerce_params(params)
         rng = rng or RNG()
         rates = params.section("rates")
+        dynamics = _optional_section(params, "dynamics")
         return AstrocyteConfig(
             inflammation_high_threshold=_threshold(params, "inflammation_high_threshold", rng),
             inflammation_low_threshold=_threshold(params, "inflammation_low_threshold", rng),
             debris_high_threshold=_threshold(params, "debris_high_threshold", rng),
             debris_low_threshold=_threshold(params, "debris_low_threshold", rng),
             support_inflammation_reduction_rate=_number(rates, "support_inflammation_reduction_rate"),
-            inflammation_release_rate=_number(rates, "inflammation_release_rate")
+            inflammation_release_rate=_number(rates, "inflammation_release_rate"),
+            stress_memory_decay=_number_or(dynamics, "stress_memory_decay", 0.0),
+            reactive_transition_rate=_number_or(dynamics, "reactive_transition_rate", 1.0),
+            supportive_recovery_rate=_number_or(dynamics, "supportive_recovery_rate", 1.0),
+            inflammatory_memory_threshold=_number_or(dynamics, "inflammatory_memory_threshold", 0.0),
+            inflammation_memory_weight=_number_or(dynamics, "inflammation_memory_weight", 0.0),
+            debris_stress_weight=_number_or(dynamics, "debris_stress_weight", 1.0)
         )
 
     @staticmethod
@@ -94,7 +112,12 @@ class ConfigFactory:
             stress_inflammation_release_rate=_number(rates, "stress_inflammation_release_rate"),
             debris_release_rate=_number(rates, "debris_release_rate"),
             alpha_absorption_rate=_number(alpha, "alpha_absorption_rate"),
-            alpha_release_amount=_number(alpha, "alpha_release_amount")
+            alpha_release_amount=_number(alpha, "alpha_release_amount"),
+            max_damage_increment_per_tick=_number_or(
+                damage,
+                "max_damage_increment_per_tick",
+                1.0
+            )
         )
 
     @staticmethod
@@ -155,11 +178,38 @@ class ConfigFactory:
         rng = rng or RNG()
         perception = params.section("perception")
         movement = params.section("movement")
+        rates = _optional_section(params, "rates")
+        defaults = AlphaSynucleinConfig(1, 1, 0.5, 0.6)
         return AlphaSynucleinConfig(
             perception_radius=_integer(perception, "perception_radius"),
             move_radius=_integer(movement, "move_radius"),
             move_probability=_number(movement, "move_probability"),
-            oxidative_stress_high_threshold=_threshold(params, "oxidative_stress_high_threshold", rng)
+            oxidative_stress_high_threshold=_threshold(params, "oxidative_stress_high_threshold", rng),
+            basal_misfold_probability=_number_or(
+                rates,
+                "basal_misfold_probability",
+                defaults.basal_misfold_probability
+            ),
+            aggregate_seeded_misfold_weight=_number_or(
+                rates,
+                "aggregate_seeded_misfold_weight",
+                defaults.aggregate_seeded_misfold_weight
+            ),
+            oxidative_misfolding_weight=_number_or(
+                rates,
+                "oxidative_misfolding_weight",
+                defaults.oxidative_misfolding_weight
+            ),
+            oligomerization_probability_scale=_number_or(
+                rates,
+                "oligomerization_probability_scale",
+                defaults.oligomerization_probability_scale
+            ),
+            min_misfolded_ticks_before_oligomerization=_integer_or(
+                rates,
+                "min_misfolded_ticks_before_oligomerization",
+                defaults.min_misfolded_ticks_before_oligomerization
+            )
         )
 
     @staticmethod
@@ -265,6 +315,13 @@ def _number_or(section: dict, name: str, default: float) -> float:
     """Read a numeric value when present, otherwise return a default."""
     if name not in section:
         return default
+    return float(section[name])
+
+
+def _optional_number(section: dict, name: str) -> Optional[float]:
+    """Read an optional numeric value from a YAML mapping."""
+    if name not in section or section[name] is None:
+        return None
     return float(section[name])
 
 

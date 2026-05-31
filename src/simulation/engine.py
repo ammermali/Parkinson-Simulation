@@ -111,6 +111,12 @@ class ParkinsonModel:
         # Local ids only need to be unique per rank and type id.
         self._next_local_id = 0
         self._create_agents(params)
+        # Dopamine is normalized against the global initial dopaminergic
+        # capacity, not the currently surviving capacity. This lets neuron loss
+        # appear as reduced output instead of being hidden by renormalization.
+        self.initial_dopamine_capacity = self._global_sum(
+            self._local_dopamine_capacity()
+        )
         self.initialization_logger.close()
 
     # Initialization
@@ -142,7 +148,9 @@ class ParkinsonModel:
 
     def _create_neurons(self, params: dict[str, Any]) -> None:
         """Create neuron macro-agents and populate their internal habitats."""
-        count = int(_param(params, "external.population.neurons", 10))
+        count = self._local_population_count(
+            int(_param(params, "external.population.neurons", 10))
+        )
         for _ in range(count):
             agent = Neuron(
                 local_id=self._new_id(),
@@ -157,7 +165,9 @@ class ParkinsonModel:
 
     def _create_microglia(self, params: dict[str, Any]) -> None:
         """Create extracellular microglia agents."""
-        count = int(_param(params, "external.population.microglia", 5))
+        count = self._local_population_count(
+            int(_param(params, "external.population.microglia", 5))
+        )
         for _ in range(count):
             agent = Microglia(
                 local_id=self._new_id(),
@@ -170,7 +180,9 @@ class ParkinsonModel:
 
     def _create_astrocytes(self, params: dict[str, Any]) -> None:
         """Create extracellular astrocyte agents."""
-        count = int(_param(params, "external.population.astrocytes", 5))
+        count = self._local_population_count(
+            int(_param(params, "external.population.astrocytes", 5))
+        )
         for _ in range(count):
             agent = Astrocyte(
                 local_id=self._new_id(),
@@ -186,7 +198,9 @@ class ParkinsonModel:
         experiments that begin with extracellular pathology already present.
         Extracellular alpha is frozen by the AlphaSynuclein class itself.
         """
-        count = int(_param(params, "external.population.alpha", 0))
+        count = self._local_population_count(
+            int(_param(params, "external.population.alpha", 0))
+        )
         for _ in range(count):
             agent = AlphaSynuclein(
                 local_id=self._new_id(),
@@ -263,6 +277,7 @@ class ParkinsonModel:
         for agent in list(self.context.agents()):
             if hasattr(agent, "step"):
                 agent.step(self)
+        self._synchronize_environment_effects()
         self.environment.commit_effects(max_possible_dopamine=self._max_possible_dopamine())
         # Future distributed runs that move agents across MPI rank boundaries
         # should synchronize here with a restore_agent function.
@@ -301,19 +316,32 @@ class ParkinsonModel:
         agent.pt = point
         self.environment.add_agent(agent, point)
         self.initialization_logger.record_agent(agent, position=point, raw_details={"habitat": "SubstantiaNigra"})
+        self._record_initial_g0_alpha(agent)
 
     def _add_internal_agent(self, neuron: Neuron, agent, point: DiscretePoint) -> None:
         """Add an intracellular agent and log its initial placement."""
 
         neuron.add_agent(agent, point)
         self.initialization_logger.record_agent(agent, position=point, owner=neuron, target=neuron, raw_details={"habitat": "Neuron"})
+        self._record_initial_g0_alpha(agent, owner=neuron)
+
+    def _record_initial_g0_alpha(self, agent, owner: Optional[Neuron] = None) -> None:
+        """Add baseline alpha-synuclein nodes to G0 at tick zero."""
+        if not isinstance(agent, AlphaSynuclein):
+            return
+        logger = getattr(self, "causal_logger", None)
+        if logger is None:
+            return
+        logger.agent_state_node(
+            agent,
+            getattr(agent, "state", None),
+            "0_pre_state",
+            owner=owner,
+            compartment=getattr(agent, "compartment", None)
+        )
 
     def _internal_point(self, neuron: Neuron, index: int) -> DiscretePoint:
-        """Return a deterministic initial point inside a neuron's local grid.
-        Agents are placed row by row and wrap around when there are more agents
-        than cells. Multiple occupancy is acceptable inside the current local
-        grid model.
-        """
+        """Return a deterministic initial point inside a neuron's local grid."""
         width = max(1, neuron.internal_cfg.width)
         height = max(1, neuron.internal_cfg.height)
         cell = index % (width * height)
@@ -323,20 +351,67 @@ class ParkinsonModel:
         """Read initial intracellular population from neuron.yaml first."""
         return int(_param(self.neuron_param_values, f"intracellular.population.{neuron_key}", _param(system_params, f"intracellular.population.{legacy_key}", 0)))
 
-    def _max_possible_dopamine(self) -> float:
-        """Return dopamine capacity from currently viable neurons.
-        SubstantiaNigra.commit_effects() normalizes released dopamine by a maximum
-        possible amount. Ruptured and apoptotic neurons are excluded because they
-        they should no longer contribute normal dopamine output."""
+    def _local_population_count(self, global_count: int) -> int:
+        """Return this rank's share of a global agent population.
+        YAML population values describe the whole biological system. In MPI
+        runs, each rank creates only its deterministic slice so ``-n 4`` still
+        creates one large simulation rather than four copies of a smaller one.
+        Remainders are assigned to the lowest ranks for stable reproducibility.
+        """
+        global_count = max(0, int(global_count))
+        size = max(1, self._comm_size())
+        base_count, remainder = divmod(global_count, size)
+        return base_count + (1 if self.rank < remainder else 0)
+
+    def _comm_size(self) -> int:
+        """Return MPI world size, falling back to serial execution."""
+        get_size = getattr(getattr(self, "comm", None), "Get_size", None)
+        if callable(get_size):
+            return int(get_size())
+        return 1
+
+    def _global_sum(self, value: float) -> float:
+        """Sum a scalar across MPI ranks when the communicator supports it."""
+        allreduce = getattr(getattr(self, "comm", None), "allreduce", None)
+        if not callable(allreduce):
+            return value
+        try:
+            return allreduce(value, op=getattr(MPI, "SUM", None))
+        except TypeError:
+            return allreduce(value)
+
+    def _synchronize_environment_effects(self) -> None:
+        """Make extracellular effect buffers global before scalar commit."""
+        effects = getattr(self.environment, "effects", None)
+        if effects is None:
+            return
+        for field in (
+            "debris_added",
+            "debris_removed",
+            "inflammation_added",
+            "inflammation_removed",
+            "dopamine_released"
+        ):
+            if hasattr(effects, field):
+                setattr(effects, field, self._global_sum(getattr(effects, field)))
+
+    def _local_dopamine_capacity(self) -> float:
+        """Return this rank's initial dopamine capacity contribution."""
         total = 0.0
         for agent in self.context.agents():
-            if (isinstance(agent, Neuron) and agent.state not in (NeuronState.APOPTOTIC, NeuronState.RUPTURED)):
+            if isinstance(agent, Neuron):
                 total += agent.cfg.dopamine_release_rate
         return total
 
+    def _max_possible_dopamine(self) -> float:
+        """Return the global baseline used to normalize dopamine output."""
+        capacity = getattr(self, "initial_dopamine_capacity", None)
+        if capacity is not None:
+            return capacity
+        return self._global_sum(self._local_dopamine_capacity())
+
     def _create_loggers(self, params: dict[str, Any]) -> tuple[CausalTraceLogger, InitializationLogger]:
         """Create separated causal and initialization loggers."""
-
         output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", "src/simulation/output/logs"))
         run_id = str(_param(params, "logging.run_id", f"run_seed_{self.seed}"))
         agent_type_map = {
@@ -378,7 +453,11 @@ class ParkinsonModel:
         if logger is None:
             return
         scalars = self.environment.scalars
-        effects = self.environment.effects
+        effects = getattr(
+            self.environment,
+            "last_committed_effects",
+            self.environment.effects
+        )
         logger.snapshot_field("extracellular_debris", scalars.extracellular_debris)
         logger.snapshot_field("inflammation_level", scalars.inflammation_level)
         logger.snapshot_field("dopamine_output", scalars.dopamine_output)

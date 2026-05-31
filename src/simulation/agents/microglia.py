@@ -2,7 +2,7 @@ from typing import Optional
 from repast4py.space import DiscretePoint
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
-from src.simulation.utils import RNG
+from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
 
 # Internal State Set
@@ -43,6 +43,9 @@ class MicrogliaConfig:
     debris_clearance_rate: float
     inflammation_release_rate: float
     move_probability: float
+    activation_transition_rate: float = 1.0
+    clearing_transition_rate: float = 1.0
+    recovery_transition_rate: float = 1.0
 
 class Microglia(AdaptiveAgent):
     """Extracellular immune agent that clears debris or amplifies inflammation."""
@@ -53,6 +56,7 @@ class Microglia(AdaptiveAgent):
         self.alpha_type_id = alpha_type_id
         self.last_perception: Optional[MicrogliaPerception] = None
         self.pending_action: Optional[MicrogliaAction] = None
+        self.last_transition_sample = {}
         self.rng = RNG
 
     def see(self, model) -> MicrogliaPerception:
@@ -76,24 +80,55 @@ class Microglia(AdaptiveAgent):
         return perception
 
     def next(self) -> MicrogliaState:
-        """Update state deterministically from the last perception."""
+        """Update state probabilistically from the last perception.
+        The transition probabilities are still threshold-driven, but each
+        microglial agent samples its own transition. This avoids a fully
+        synchronized population response when all agents read the same global
+        debris and inflammation scalars.
+        """
         if self.last_perception is None:
             raise RuntimeError()
         old_state = self.state
         p = self.last_perception
+        self.last_transition_sample = {}
+        debris_pressure = self._debris_pressure(p)
+        inflammation_pressure = self._inflammation_pressure(p)
+        alpha_pressure = self._alpha_pressure(p)
+        activation_pressure = max(inflammation_pressure, alpha_pressure)
         if self.state == MicrogliaState.RESTING:
-            if p.extracellular_debris >= self.cfg.debris_high_threshold:
+            if debris_pressure > 0 and self._sample_transition(
+                "resting_to_clearing",
+                self.cfg.clearing_transition_rate * debris_pressure,
+            ):
                 self.state = MicrogliaState.CLEARING
-            elif p.inflammation_level >= self.cfg.inflammation_high_threshold or p.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
+            elif activation_pressure > 0 and self._sample_transition(
+                "resting_to_activated",
+                self.cfg.activation_transition_rate * activation_pressure,
+            ):
                 self.state = MicrogliaState.ACTIVATED
         elif self.state == MicrogliaState.CLEARING:
-            if p.inflammation_level >= self.cfg.inflammation_high_threshold:
+            if activation_pressure > 0 and self._sample_transition(
+                "clearing_to_activated",
+                self.cfg.activation_transition_rate * activation_pressure,
+            ):
                 self.state = MicrogliaState.ACTIVATED
-            elif p.extracellular_debris <= self.cfg.debris_low_threshold:
+            elif debris_pressure == 0 and self._sample_transition(
+                "clearing_to_resting",
+                self.cfg.recovery_transition_rate,
+            ):
                 self.state = MicrogliaState.RESTING
         elif self.state == MicrogliaState.ACTIVATED:
-            if p.inflammation_level <= self.cfg.inflammation_low_threshold and p.nearby_alpha <= self.cfg.nearby_alpha_low_threshold and p.extracellular_debris <= self.cfg.debris_low_threshold:
-                self.state = MicrogliaState.RESTING
+            if activation_pressure == 0:
+                if debris_pressure > 0 and self._sample_transition(
+                    "activated_to_clearing",
+                    self.cfg.clearing_transition_rate * debris_pressure,
+                ):
+                    self.state = MicrogliaState.CLEARING
+                elif debris_pressure == 0 and self._sample_transition(
+                    "activated_to_resting",
+                    self.cfg.recovery_transition_rate,
+                ):
+                    self.state = MicrogliaState.RESTING
         if old_state != self.state:
             self._log_causal_state_trigger(old_state, p)
         return self.state
@@ -169,18 +204,18 @@ class Microglia(AdaptiveAgent):
         logger = causal_logger_from(self)
         if logger is None:
             return
-        if old_state == MicrogliaState.RESTING and self.state == MicrogliaState.CLEARING:
+        if self.state == MicrogliaState.CLEARING:
             source = logger.env_field_node("SN.extracellular_debris", "extracellular_debris", "1_perception", p.extracellular_debris)
             logger.threshold_trigger(
                 source,
                 self,
                 self.state,
-                "microglia_clearing_by_debris",
-                "MICROGLIA_CLEARING_DEBRIS_HIGH",
-                "extracellular_debris >= debris_high_threshold"
+                "microglia_clearing_by_debris_pressure",
+                "MICROGLIA_CLEARING_DEBRIS_PRESSURE",
+                "extracellular_debris pressure > 0"
             )
         elif self.state == MicrogliaState.ACTIVATED:
-            if p.inflammation_level >= self.cfg.inflammation_high_threshold:
+            if self._inflammation_pressure(p) > 0:
                 source = logger.env_field_node("SN.inflammation_level", "inflammation_level", "1_perception", p.inflammation_level)
                 logger.threshold_trigger(
                     source,
@@ -188,9 +223,9 @@ class Microglia(AdaptiveAgent):
                     self.state,
                     "microglia_activation_by_inflammation",
                     "MICROGLIA_ACTIVATION_INFLAMMATION_HIGH",
-                    "inflammation_level >= inflammation_high_threshold"
+                    "inflammation pressure > 0"
                 )
-            elif p.nearby_alpha >= self.cfg.nearby_alpha_high_threshold:
+            elif self._alpha_pressure(p) > 0:
                 source = logger.env_field_node("SN.nearby_alpha_density", "nearby_alpha_density", "1_perception", p.nearby_alpha)
                 logger.threshold_trigger(
                     source,
@@ -198,6 +233,54 @@ class Microglia(AdaptiveAgent):
                     self.state,
                     "microglia_activation_by_nearby_alpha",
                     "MICROGLIA_ACTIVATION_ALPHA_HIGH",
-                    "nearby_alpha >= nearby_alpha_high_threshold"
+                    "nearby_alpha pressure > 0"
                 )
-        logger.state_transition(self, old_state, self.state, "microglia_state_update")
+        logger.state_transition(
+            self,
+            old_state,
+            self.state,
+            "microglia_state_update",
+            probability=self.last_transition_sample.get("probability"),
+            rng_value=self.last_transition_sample.get("draw")
+        )
+
+    def _sample_transition(self, check: str, probability: float) -> bool:
+        """Sample one microglial transition probability."""
+        probability = clamp(probability)
+        draw = self.rng.random()
+        self.last_transition_sample = {
+            "check": check,
+            "probability": probability,
+            "draw": draw
+        }
+        return probability >= 1.0 or draw < probability
+
+    def _debris_pressure(self, p: MicrogliaPerception) -> float:
+        """Return normalized debris pressure above the low threshold."""
+        return self._normalized_pressure(
+            p.extracellular_debris,
+            self.cfg.debris_low_threshold,
+            self.cfg.debris_high_threshold
+        )
+
+    def _inflammation_pressure(self, p: MicrogliaPerception) -> float:
+        """Return normalized inflammatory pressure above the low threshold."""
+        return self._normalized_pressure(
+            p.inflammation_level,
+            self.cfg.inflammation_low_threshold,
+            self.cfg.inflammation_high_threshold
+        )
+
+    def _alpha_pressure(self, p: MicrogliaPerception) -> float:
+        """Return normalized nearby-alpha pressure above the low threshold."""
+        return self._normalized_pressure(
+            p.nearby_alpha,
+            self.cfg.nearby_alpha_low_threshold,
+            self.cfg.nearby_alpha_high_threshold
+        )
+
+    def _normalized_pressure(self, value: float, low: float, high: float) -> float:
+        """Normalize a scalar between low and high thresholds."""
+        if high <= low:
+            return 1.0 if value >= high else 0.0
+        return clamp((value - low) / (high - low))

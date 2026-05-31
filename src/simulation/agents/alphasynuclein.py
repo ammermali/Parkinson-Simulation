@@ -33,6 +33,11 @@ class AlphaSynucleinConfig:
     move_radius: int
     move_probability: float
     oxidative_stress_high_threshold: float
+    basal_misfold_probability: float = 0.001
+    aggregate_seeded_misfold_weight: float = 0.2
+    oxidative_misfolding_weight: float = 1.0
+    oligomerization_probability_scale: float = 1.0
+    min_misfolded_ticks_before_oligomerization: int = 0
 
 @dataclass(frozen=True)
 class AlphaSynucleinPerception(AdaptiveAgentPerception):
@@ -62,6 +67,7 @@ class AlphaSynuclein(AdaptiveAgent):
         self.rng = RNG
         # Intentions are reset in next() and consumed by AggregateRegistry.
         self.wants_oligomerization: bool = False
+        self.misfolded_ticks: int = 0
 
     @property
     def is_free(self) -> bool:
@@ -143,9 +149,10 @@ class AlphaSynuclein(AdaptiveAgent):
         p = self.last_perception
         draw = self.rng.random()
         if self.state == AlphaSynucleinState.MONOMER:
-            probability = p.oxidative_stress if p.oxidative_stress >= self.cfg.oxidative_stress_high_threshold else 0.0
+            probability = self.pr_misfolding()
             if draw < probability:
                 self.state = AlphaSynucleinState.MISFOLDED
+                self.misfolded_ticks = 0
                 logger = causal_logger_from(self)
                 if logger is not None:
                     source = logger.internal_field_node(
@@ -158,9 +165,9 @@ class AlphaSynuclein(AdaptiveAgent):
                         source,
                         self,
                         self.state,
-                        "alpha_misfolding_by_oxidative_stress",
-                        "ALPHA_MISFOLDING_OXIDATIVE_STRESS",
-                        "oxidative_stress >= oxidative_stress_high_threshold",
+                        "alpha_misfolding_pressure",
+                        "ALPHA_MISFOLDING",
+                        "basal, oxidative_stress, or aggregate-seeded misfolding pressure",
                         owner=self.owner_neuron,
                         compartment=self.compartment
                     )
@@ -169,14 +176,17 @@ class AlphaSynuclein(AdaptiveAgent):
                         old_state,
                         self.state,
                         "alpha_misfolding",
-                        rule_id="ALPHA_MISFOLDING_OXIDATIVE_STRESS",
+                        rule_id="ALPHA_MISFOLDING",
                         probability=probability,
                         rng_value=draw,
                         owner=self.owner_neuron,
                         compartment=self.compartment
                     )
         elif self.state == AlphaSynucleinState.MISFOLDED:
-            probability = self.pr_oligomerization()
+            if self.misfolded_ticks < self.cfg.min_misfolded_ticks_before_oligomerization:
+                probability = 0.0
+            else:
+                probability = self.pr_oligomerization()
             self.wants_oligomerization = draw < probability
             if self.wants_oligomerization:
                 logger = causal_logger_from(self)
@@ -206,6 +216,7 @@ class AlphaSynuclein(AdaptiveAgent):
                         compartment=self.compartment,
                         owner_uid=uid_of(self.owner_neuron)
                     )
+            self.misfolded_ticks += 1
         return self.state
 
     def action(self) -> AlphaSynucleinAction:
@@ -253,6 +264,7 @@ class AlphaSynuclein(AdaptiveAgent):
         self.state = state
         self.pending_action = AlphaSynucleinAction.STAY
         self.wants_oligomerization = False
+        self.misfolded_ticks = 0
 
     def mark_cleared(self):
         """Mark a free protein as cleared by degradation machinery."""
@@ -260,6 +272,7 @@ class AlphaSynuclein(AdaptiveAgent):
         self.state = AlphaSynucleinState.CLEARED
         self.pending_action = AlphaSynucleinAction.STAY
         self.wants_oligomerization = False
+        self.misfolded_ticks = 0
 
     def release_to_environment(self):
         """Freeze this protein as extracellular pathology."""
@@ -330,4 +343,30 @@ class AlphaSynuclein(AdaptiveAgent):
         """Probability that a misfolded protein asks to join an aggregate."""
         alpha_density = self._neighbor_alpha_density()
         aggregate_density = self._neighbor_aggregate_density()
-        return clamp(alpha_density * 0.3 + aggregate_density * 0.7)
+        return clamp(
+            self.cfg.oligomerization_probability_scale
+            * (alpha_density * 0.3 + aggregate_density * 0.7)
+        )
+
+    def pr_misfolding(self) -> float:
+        """Probability that a monomer misfolds during this tick."""
+        if self.last_perception is None:
+            return 0.0
+        p = self.last_perception
+        oxidative_component = self.cfg.oxidative_misfolding_weight * self._oxidative_pressure(p.oxidative_stress)
+        seeded_component = (
+            self.cfg.aggregate_seeded_misfold_weight
+            * p.local_aggregate_density
+        )
+        return clamp(
+            self.cfg.basal_misfold_probability
+            + oxidative_component
+            + seeded_component
+        )
+
+    def _oxidative_pressure(self, oxidative_stress: float) -> float:
+        """Normalize oxidative stress above the sampled misfolding threshold."""
+        threshold = self.cfg.oxidative_stress_high_threshold
+        if oxidative_stress < threshold:
+            return 0.0
+        return clamp((oxidative_stress - threshold) / max(1e-9, 1.0 - threshold))

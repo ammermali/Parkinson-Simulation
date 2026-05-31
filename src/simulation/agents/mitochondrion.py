@@ -172,7 +172,7 @@ class Mitochondrion(AdaptiveAgent):
         elif self.state == MitochondrionState.DAMAGED:
             self.pending_action = MitochondrionAction.DIVIDE
         elif self.state == MitochondrionState.CONSUMED:
-            if p.energy_demand < self.cfg.energy_demand_high_threshold and self._is_low_damage(p):
+            if self._is_recovery_context(p):
                 self.pending_action = MitochondrionAction.FUSE
             else:
                 self.pending_action = MitochondrionAction.STRESS
@@ -313,6 +313,11 @@ class Mitochondrion(AdaptiveAgent):
             p.local_debris_density <= self.cfg.debris_density_low_threshold
         )
 
+    def _is_recovery_context(self, p):
+        """Return True when a consumed mitochondrion can safely fuse."""
+        low_energy_threshold = 0.5 * self.cfg.energy_demand_high_threshold
+        return p.energy_demand <= low_energy_threshold and self._is_low_damage(p)
+
     def _toxicity(self, p: MitochondrionPerception):
         """Weighted local pathology pressure acting on the mitochondrion."""
         return clamp(
@@ -320,6 +325,11 @@ class Mitochondrion(AdaptiveAgent):
             + 0.4 * p.local_aggregate_density
             + 0.2 * p.local_debris_density
         )
+
+    def _energy_pressure(self, p: MitochondrionPerception) -> float:
+        """Energy-demand pressure above the configured high-demand threshold."""
+        denominator = max(1e-9, 1.0 - self.cfg.energy_demand_high_threshold)
+        return clamp((p.energy_demand - self.cfg.energy_demand_high_threshold) / denominator)
 
     def _register_if_degradable(self, habitat):
         """Expose damaged mitochondria to the neuron's lysosome buffer."""
@@ -332,33 +342,37 @@ class Mitochondrion(AdaptiveAgent):
     def pr_pathological_evolution(self) -> float:
         """Probability that a healthy mitochondrion enters stressed state."""
         p = self.last_perception
-        return clamp(0.5 * p.energy_demand + 0.5 * self._toxicity(p))
+        return clamp(0.35 * self._energy_pressure(p) + 0.65 * self._toxicity(p))
 
     def pr_consumed_to_healthy(self) -> float:
         """Recovery chance for a stressed mitochondrion in low-demand context."""
 
         p = self.last_perception
-        return clamp((1.0 - p.energy_demand) * (1.0 - self._toxicity(p)))
+        if not self._is_recovery_context(p):
+            return 0.0
+        return clamp(0.25 * (1.0 - self._energy_pressure(p)) * (1.0 - self._toxicity(p)))
 
     def pr_consumed_to_damaged(self) -> float:
         """Damage chance for a stressed mitochondrion under toxic pressure."""
         p = self.last_perception
-        return clamp(self._toxicity(p) * (0.5 + 0.5 * p.energy_demand))
+        return clamp(0.65 * self._toxicity(p) + 0.35 * self._energy_pressure(p))
 
     def pr_damaged_to_consumed(self) -> float:
         """Partial recovery chance from damaged to stressed but viable state."""
 
         p = self.last_perception
-        return clamp((1.0 - self._toxicity(p)) * (1.0 - p.energy_demand))
+        if not self._is_low_damage(p):
+            return 0.0
+        return clamp(0.15 * (1.0 - self._toxicity(p)) * (1.0 - self._energy_pressure(p)))
 
     def pr_irreversible_damage(self) -> float:
         """Chance that toxicity crosses into debris-producing damage."""
 
         p = self.last_perception
-        toxicity = self._toxicity(p)
-        if toxicity < self.cfg.irreversible_damage_threshold:
+        pressure = clamp(0.8 * self._toxicity(p) + 0.2 * self._energy_pressure(p))
+        if pressure < self.cfg.irreversible_damage_threshold:
             return 0.0
-        return clamp(toxicity)
+        return pressure
 
     def energy_demand_reduction(self) -> float:
         """Amount of unmet energy demand reduced this tick."""

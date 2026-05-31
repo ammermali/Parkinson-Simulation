@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from math import exp
+from typing import Optional
 from src.simulation.utils import clamp, GridHabitatMixin, LocalGrid
 
 
@@ -12,6 +14,12 @@ class SNEnvironmentConfig:
     debris_decay: float
     inflammation_decay: float
     dopamine_smoothing: float
+    debris_added_max_delta: Optional[float] = None
+    debris_removed_max_delta: Optional[float] = None
+    debris_effect_scale: float = 1.0
+    inflammation_added_max_delta: Optional[float] = None
+    inflammation_removed_max_delta: Optional[float] = None
+    inflammation_effect_scale: float = 1.0
 
 
 @dataclass
@@ -45,12 +53,14 @@ class SubstantiaNigra(GridHabitatMixin):
         )
 
         self.effects = SNEffects()
+        self.last_committed_effects = SNEffects()
 
     # TICK CYCLE
 
     def begin_tick(self):
         """Reset extracellular effect buffers for a new tick."""
         self.effects = SNEffects()
+        self.last_committed_effects = SNEffects()
 
     def commit_effects(self, max_possible_dopamine: float):
         """Apply buffered effects, decay and dopamine smoothing to scalars."""
@@ -58,8 +68,29 @@ class SubstantiaNigra(GridHabitatMixin):
         old = self.scalars
         eff = self.effects
 
-        new_debris = (old.extracellular_debris + eff.debris_added - eff.debris_removed - cfg.debris_decay * old.extracellular_debris)
-        new_inflammation = (old.inflammation_level + eff.inflammation_added - eff.inflammation_removed - cfg.inflammation_decay * old.inflammation_level)
+        debris_added = self._effect_delta(
+            eff.debris_added,
+            cfg.debris_added_max_delta,
+            cfg.debris_effect_scale
+        )
+        debris_removed = self._effect_delta(
+            eff.debris_removed,
+            cfg.debris_removed_max_delta,
+            cfg.debris_effect_scale
+        )
+        inflammation_added = self._effect_delta(
+            eff.inflammation_added,
+            cfg.inflammation_added_max_delta,
+            cfg.inflammation_effect_scale
+        )
+        inflammation_removed = self._effect_delta(
+            eff.inflammation_removed,
+            cfg.inflammation_removed_max_delta,
+            cfg.inflammation_effect_scale
+        )
+
+        new_debris = (old.extracellular_debris + debris_added - debris_removed - cfg.debris_decay * old.extracellular_debris)
+        new_inflammation = (old.inflammation_level + inflammation_added - inflammation_removed - cfg.inflammation_decay * old.inflammation_level)
 
         if max_possible_dopamine > 0:
             dopamine_raw = eff.dopamine_released / max_possible_dopamine
@@ -74,6 +105,13 @@ class SubstantiaNigra(GridHabitatMixin):
         self.scalars.extracellular_debris = clamp(new_debris)
         self.scalars.inflammation_level = clamp(new_inflammation)
         self.scalars.dopamine_output = clamp(new_dopamine)
+        self.last_committed_effects = SNEffects(
+            debris_added=debris_added,
+            debris_removed=debris_removed,
+            inflammation_added=inflammation_added,
+            inflammation_removed=inflammation_removed,
+            dopamine_released=eff.dopamine_released
+        )
 
     # AGENTS EFFECTS
 
@@ -96,3 +134,14 @@ class SubstantiaNigra(GridHabitatMixin):
     def release_dopamine(self, amount: float):
         """Buffer dopamine released by neurons this tick."""
         self.effects.dopamine_released += amount
+
+    def _effect_delta(self, raw_effect: float, max_delta: Optional[float], scale: float) -> float:
+        """Convert a raw population sum into one committed scalar delta."""
+        if raw_effect <= 0.0:
+            return 0.0
+        if max_delta is None:
+            return raw_effect
+        if max_delta <= 0.0:
+            return 0.0
+        scale = max(scale, 1e-9)
+        return max_delta * (1.0 - exp(-raw_effect / scale))

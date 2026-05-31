@@ -2,6 +2,7 @@ from typing import Optional
 from repast4py.space import DiscretePoint
 from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
 from dataclasses import dataclass
+from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
 
 # Internal State Set
@@ -25,13 +26,19 @@ class AstrocytePerception(AdaptiveAgentPerception):
 
 @dataclass
 class AstrocyteConfig:
-    """Astrocyte sensing thresholds and inflammatory effect rates."""
+    """Astrocyte sensing thresholds, memory and inflammatory effect rates."""
     inflammation_high_threshold: float
     inflammation_low_threshold: float
     debris_high_threshold: float
     debris_low_threshold: float
     support_inflammation_reduction_rate: float
     inflammation_release_rate: float
+    stress_memory_decay: float = 0.0
+    reactive_transition_rate: float = 1.0
+    supportive_recovery_rate: float = 1.0
+    inflammatory_memory_threshold: float = 0.0
+    inflammation_memory_weight: float = 0.0
+    debris_stress_weight: float = 1.0
 
 class Astrocyte(AdaptiveAgent):
     """Extracellular support agent that dampens or amplifies inflammation."""
@@ -41,6 +48,9 @@ class Astrocyte(AdaptiveAgent):
         self.cfg = config
         self.last_perception: Optional[AstrocytePerception] = None
         self.pending_action: Optional[AstrocyteAction] = None
+        self.stress_memory: float = 0.0
+        self.last_transition_sample = {}
+        self.rng = RNG
 
     def see(self, model) -> AstrocytePerception:
         """Read extracellular inflammatory and debris state."""
@@ -56,27 +66,67 @@ class Astrocyte(AdaptiveAgent):
         return perception
 
     def next(self) -> AstrocyteState:
-        """Update astrocyte state from the last perception."""
+        """Update astrocyte state from stress memory.
+
+        Astrocytes read global inflammatory scalars, so a purely deterministic
+        threshold would synchronize the full population. Each instance instead
+        integrates stress over time and samples a transition probability from
+        that memory. Defaults preserve the old deterministic behavior for unit
+        tests and small toy runs.
+        """
         if self.last_perception is None:
             raise RuntimeError()
         old_state = self.state
         p = self.last_perception
+        pressure = self._stress_pressure(p)
+        self.stress_memory = clamp(
+            self.cfg.stress_memory_decay * self.stress_memory
+            + (1.0 - self.cfg.stress_memory_decay) * pressure
+        )
+        self.last_transition_sample = {
+            "stress_pressure": pressure,
+            "stress_memory": self.stress_memory,
+            "probability": 0.0,
+            "draw": None,
+        }
         if self.state == AstrocyteState.SUPPORTIVE:
-            if p.inflammation_level >= self.cfg.inflammation_high_threshold or p.extracellular_debris >= self.cfg.debris_high_threshold:
+            probability = clamp(self.cfg.reactive_transition_rate * self.stress_memory)
+            draw = self.rng.random()
+            self.last_transition_sample.update({
+                "probability": probability,
+                "draw": draw,
+            })
+            if draw < probability:
                 self.state = AstrocyteState.REACTIVE
         elif self.state == AstrocyteState.REACTIVE:
-            if p.inflammation_level <= self.cfg.inflammation_low_threshold and p.extracellular_debris <= self.cfg.debris_low_threshold:
+            low_environment = p.inflammation_level <= self.cfg.inflammation_low_threshold
+            probability = clamp(self.cfg.supportive_recovery_rate * (1.0 - self.stress_memory))
+            draw = self.rng.random()
+            self.last_transition_sample.update({
+                "probability": probability,
+                "draw": draw,
+            })
+            if low_environment and draw < probability:
                 self.state = AstrocyteState.SUPPORTIVE
         if old_state != self.state:
             self._log_causal_state_trigger(old_state, p)
         return self.state
 
     def action(self) -> AstrocyteAction:
-        """Map the current astrocyte state to one environmental action."""
+        """Map the current astrocyte state to one environmental action.
+
+        Reactive astrocytes are not automatically inflammatory. They keep
+        providing support while stress memory is low, and become inflammatory
+        only after stress has persisted enough to cross the configured memory
+        threshold.
+        """
         if self.state == AstrocyteState.SUPPORTIVE:
             self.pending_action = AstrocyteAction.SUPPORT
         elif self.state == AstrocyteState.REACTIVE:
-            self.pending_action = AstrocyteAction.INFLAMMATION
+            if self.stress_memory >= self.cfg.inflammatory_memory_threshold:
+                self.pending_action = AstrocyteAction.INFLAMMATION
+            else:
+                self.pending_action = AstrocyteAction.SUPPORT
         logger = causal_logger_from(self)
         if logger is not None:
             logger.action_selection(self, self.pending_action, "astrocyte_state_action_policy")
@@ -100,14 +150,15 @@ class Astrocyte(AdaptiveAgent):
                     "astrocyte_support_inflammation_reduction"
                 )
         elif self.pending_action == AstrocyteAction.INFLAMMATION:
-            env.add_inflammation(self.cfg.inflammation_release_rate)
+            amount = self._inflammation_release_amount()
+            env.add_inflammation(amount)
             logger = causal_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "inflammation_level",
-                    self.cfg.inflammation_release_rate,
+                    amount,
                     "positive",
                     "astrocyte_reactive_inflammation_release"
                 )
@@ -146,4 +197,37 @@ class Astrocyte(AdaptiveAgent):
                     "ASTROCYTE_REACTIVE_STRESS_HIGH",
                     "extracellular_debris >= debris_high_threshold"
                 )
-        logger.state_transition(self, old_state, self.state, "astrocyte_state_update")
+        logger.state_transition(
+            self,
+            old_state,
+            self.state,
+            "astrocyte_state_update",
+            probability=self.last_transition_sample.get("probability"),
+            rng_value=self.last_transition_sample.get("draw")
+        )
+
+    def _stress_pressure(self, p: AstrocytePerception) -> float:
+        """Return normalized extracellular stress above low thresholds."""
+        inflammation_pressure = self._normalized_pressure(
+            p.inflammation_level,
+            self.cfg.inflammation_low_threshold,
+            self.cfg.inflammation_high_threshold
+        )
+        debris_pressure = self._normalized_pressure(
+            p.extracellular_debris,
+            self.cfg.debris_low_threshold,
+            self.cfg.debris_high_threshold
+        )
+        return max(inflammation_pressure, clamp(self.cfg.debris_stress_weight) * debris_pressure)
+
+    def _normalized_pressure(self, value: float, low: float, high: float) -> float:
+        """Normalize a scalar between low and high thresholds."""
+        if high <= low:
+            return 1.0 if value >= high else 0.0
+        return clamp((value - low) / (high - low))
+
+    def _inflammation_release_amount(self) -> float:
+        """Scale reactive inflammatory output by stress memory when enabled."""
+        weight = clamp(self.cfg.inflammation_memory_weight)
+        multiplier = (1.0 - weight) + weight * self.stress_memory
+        return self.cfg.inflammation_release_rate * multiplier

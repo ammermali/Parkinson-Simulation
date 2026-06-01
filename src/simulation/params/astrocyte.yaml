@@ -1,25 +1,25 @@
 thresholds:
   inflammation_high_threshold:
-    mean: 0.65
+    mean: 0.55
     std: 0.1
   inflammation_low_threshold:
     mean: 0.25
     std: 0.05
   debris_high_threshold:
-    mean: 0.65
+    mean: 0.55
     std: 0.1
   debris_low_threshold:
     mean: 0.15
     std: 0.04
 
 rates:
-  support_inflammation_reduction_rate: 0.03
+  support_inflammation_reduction_rate: 0.014
   inflammation_release_rate: 0.015
 
 dynamics:
   stress_memory_decay: 0.85
-  reactive_transition_rate: 0.35
-  supportive_recovery_rate: 0.2
-  inflammatory_memory_threshold: 0.55
+  reactive_transition_rate: 0.45
+  supportive_recovery_rate: 0.16
+  inflammatory_memory_threshold: 0.5
   inflammation_memory_weight: 0.8
   debris_stress_weight: 0.2

@@ -125,10 +125,55 @@ class ConfigFactory:
                 "compromised_dopamine_release_fraction",
                 0.6
             ),
+            apoptotic_internal_damage_threshold=_number_or(
+                damage,
+                "apoptotic_internal_damage_threshold",
+                0.0
+            ),
+            dopamine_factor_healthy=_number_or(
+                rates,
+                "dopamine_factor_healthy",
+                1.0
+            ),
+            dopamine_factor_compromised=_number_or(
+                rates,
+                "dopamine_factor_compromised",
+                _number_or(rates, "compromised_dopamine_release_fraction", 0.6)
+            ),
+            dopamine_factor_apoptotic=_number_or(
+                rates,
+                "dopamine_factor_apoptotic",
+                0.0
+            ),
+            dopamine_factor_ruptured=_number_or(
+                rates,
+                "dopamine_factor_ruptured",
+                0.0
+            ),
             alpha_release_dopamine_fraction=_number_or(
                 alpha,
                 "alpha_release_dopamine_fraction",
                 0.35
+            ),
+            min_ticks_compromised_before_apoptotic=_integer_or(
+                damage,
+                "min_ticks_compromised_before_apoptotic",
+                0
+            ),
+            min_ticks_apoptotic_before_ruptured=_integer_or(
+                damage,
+                "min_ticks_apoptotic_before_ruptured",
+                0
+            ),
+            rupture_internal_damage_threshold=_number_or(
+                damage,
+                "rupture_internal_damage_threshold",
+                0.0
+            ),
+            rupture_intracellular_debris_threshold=_number_or(
+                damage,
+                "rupture_intracellular_debris_threshold",
+                0.0
             )
         )
 

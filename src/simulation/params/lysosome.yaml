@@ -5,17 +5,17 @@ movement:
   move_radius: 1
 
 degradation:
-  base_degradation_probability: 0.6
+  base_degradation_probability: 0.5
   protein_degradation_ticks: 2
 
 repair:
   mitochondrion_repair_ticks: 3
-  mitochondrion_repair_probability: 0.6
+  mitochondrion_repair_probability: 0.55
 
 aggregate:
   degradation_ticks_base: 1
   degradation_ticks_per_member: 1
-  degradation_probability_base: 0.25
-  degradation_probability_per_member: 0.04
-  overwhelm_probability_base: 0.06
-  overwhelm_probability_per_member: 0.04
+  degradation_probability_base: 0.18
+  degradation_probability_per_member: 0.035
+  overwhelm_probability_base: 0.11
+  overwhelm_probability_per_member: 0.06

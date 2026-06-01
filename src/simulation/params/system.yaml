@@ -3,8 +3,8 @@ random.seed: 42
 
 external.population:
   neurons: 20
-  microglia: 20
-  astrocytes: 20
+  microglia: 15
+  astrocytes: 15
   alpha: 0
 
 world:
@@ -21,3 +21,7 @@ logging:
   initialization:
     enabled: true
   scalar_stdout: true
+  tick_metrics_csv: true
+  progress_stdout: true
+  progress_interval: 25
+  summary_stdout: true

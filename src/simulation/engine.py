@@ -14,6 +14,7 @@ The actual agent behavior remains inside the agent classes."""
 from __future__ import annotations
 
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -72,6 +73,19 @@ AGGREGATE_METRIC_STATES = ("Oligomer", "LewyBody", "Unknown")
 
 FINAL_SUM_METRIC_KEYS = (
     *(f"neurons.{state}" for state in NEURON_METRIC_STATES),
+    "neurons.transitions.healthy_to_compromised.count",
+    "neurons.transitions.compromised_to_apoptotic.count",
+    "neurons.transitions.apoptotic_to_ruptured.count",
+    "neurons.state_time.compromised_ticks_total",
+    "neurons.state_time.apoptotic_ticks_total",
+    "neurons.state_time.compromised_neuron_count",
+    "neurons.state_time.apoptotic_neuron_count",
+    "neurons.recoveries.compromised_to_healthy",
+    "neurons.blocks.min_ticks_compromised",
+    "neurons.blocks.apoptotic_internal_damage_threshold",
+    "neurons.ever_compromised",
+    "neurons.ever_apoptotic",
+    "neurons.ever_recovered",
     *(f"astrocytes.{state}" for state in ASTROCYTE_METRIC_STATES),
     *(f"microglia.{state}" for state in MICROGLIA_METRIC_STATES),
     *(f"alpha.free.{state}" for state in ALPHA_METRIC_STATES),
@@ -102,6 +116,23 @@ FINAL_MAX_METRIC_KEYS = (
     "aggregates.max_size",
     "aggregates.intracellular.max_size",
     "aggregates.extracellular.max_size",
+)
+
+TICK_METRIC_COUNT_KEYS = (
+    "neurons_healthy",
+    "neurons_compromised",
+    "neurons_apoptotic",
+    "neurons_ruptures",
+    "free_alpha",
+    "alpha_aggregate",
+)
+
+TICK_METRIC_COLUMNS = (
+    "tick",
+    "debris",
+    "inflammation",
+    "dopamine",
+    *TICK_METRIC_COUNT_KEYS,
 )
 
 
@@ -160,6 +191,7 @@ class ParkinsonModel:
         # Runtime causal traces and initialization logs are intentionally
         # separate: G0 edges stay compact, while initial conditions stay rich.
         self.causal_logger, self.initialization_logger = self._create_loggers(params)
+        self._create_tick_metrics_csv(params)
         # Local ids only need to be unique per rank and type id.
         self._next_local_id = 0
         self._create_agents(params)
@@ -337,6 +369,7 @@ class ParkinsonModel:
         # should synchronize here with a restore_agent function.
         # self.context.synchronize(restore_agent)
         self._record_scalar_tick()
+        self._record_tick_metrics_csv()
         self._log_tick()
         self._log_progress_tick()
         self._stop_if_complete()
@@ -472,6 +505,10 @@ class ParkinsonModel:
             return
         self._finalized = True
         self._log_completion()
+        tick_metrics_file = getattr(self, "_tick_metrics_file", None)
+        if tick_metrics_file is not None:
+            tick_metrics_file.close()
+            self._tick_metrics_file = None
         causal_logger = getattr(self, "causal_logger", None)
         if causal_logger is not None:
             causal_logger.close()
@@ -536,6 +573,25 @@ class ParkinsonModel:
         )
         return causal_logger, initialization_logger
 
+    def _create_tick_metrics_csv(self, params: dict[str, Any]) -> None:
+        """Open the global per-tick CSV writer on rank 0.
+
+        Counts are reduced across ranks before writing, so this file describes
+        the whole distributed simulation even when MPI partitions the agent
+        population.
+        """
+
+        default_enabled = bool(_param(params, "logging.enabled", True))
+        self.tick_metrics_enabled = bool(_param(params, "logging.tick_metrics_csv", default_enabled))
+        self._tick_metrics_file = None
+        if not self.tick_metrics_enabled or self.rank != 0:
+            return
+        output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", "src/simulation/output/logs"))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = output_dir / "tick_metrics.csv"
+        self._tick_metrics_file = path.open("w", encoding="utf-8", newline="")
+        self._tick_metrics_file.write(",".join(TICK_METRIC_COLUMNS) + "\n")
+
     def _resolve_output_dir(self, value: str) -> Path:
         """Resolve relative output paths from the project root."""
         path = Path(value)
@@ -562,6 +618,60 @@ class ParkinsonModel:
         logger.buffer_commit("inflammation_added", "inflammation_level", effects.inflammation_added, "positive", "sn_inflammation_added_commit")
         logger.buffer_commit("inflammation_removed", "inflammation_level", effects.inflammation_removed, "negative", "sn_inflammation_removed_commit")
         logger.buffer_commit("dopamine_released", "dopamine_output", effects.dopamine_released, "positive", "sn_dopamine_release_commit")
+
+    def _record_tick_metrics_csv(self) -> None:
+        """Append one global per-tick metric row for later time-series analysis."""
+        if not getattr(self, "tick_metrics_enabled", False):
+            return
+        local_counts = self._local_tick_metric_counts()
+        global_counts = {
+            key: int(self._global_sum(local_counts.get(key, 0)))
+            for key in TICK_METRIC_COUNT_KEYS
+        }
+        if self.rank != 0:
+            return
+        tick_metrics_file = getattr(self, "_tick_metrics_file", None)
+        if tick_metrics_file is None:
+            return
+        scalars = self.environment.scalars
+        row = [
+            str(getattr(self, "tick_count", 0)),
+            f"{scalars.extracellular_debris:.6f}",
+            f"{scalars.inflammation_level:.6f}",
+            f"{scalars.dopamine_output:.6f}",
+            *(str(global_counts[key]) for key in TICK_METRIC_COUNT_KEYS),
+        ]
+        tick_metrics_file.write(",".join(row) + "\n")
+        tick_metrics_file.flush()
+
+    def _local_tick_metric_counts(self) -> dict[str, int]:
+        """Count local agent states used by the per-tick CSV."""
+
+        counts = {key: 0 for key in TICK_METRIC_COUNT_KEYS}
+        for agent in self.context.agents():
+            if isinstance(agent, Neuron):
+                state = _state_value(getattr(agent, "state", None))
+                if state == NeuronState.HEALTHY.value:
+                    counts["neurons_healthy"] += 1
+                elif state == NeuronState.COMPROMISED.value:
+                    counts["neurons_compromised"] += 1
+                elif state == NeuronState.APOPTOTIC.value:
+                    counts["neurons_apoptotic"] += 1
+                elif state == NeuronState.RUPTURED.value:
+                    counts["neurons_ruptures"] += 1
+                self._count_tick_alpha_agents(getattr(agent, "grid", None), counts)
+        self._count_tick_alpha_agents(getattr(self.environment, "grid", None), counts)
+        return counts
+
+    def _count_tick_alpha_agents(self, grid, counts: dict[str, int]) -> None:
+        """Count alpha proteins and aggregate agents from one grid registry."""
+
+        for agent in getattr(grid, "agent_registry", []):
+            if isinstance(agent, AlphaSynuclein) and agent.aggregate_id is None:
+                if getattr(agent, "state", None) != AlphaSynucleinState.CLEARED:
+                    counts["free_alpha"] += 1
+            elif isinstance(agent, AlphaAggregate):
+                counts["alpha_aggregate"] += 1
 
     def _log_tick(self) -> None:
         """Print a compact scalar log from rank 0 only."""
@@ -611,6 +721,7 @@ class ParkinsonModel:
         """Print final status after all ranks have joined summary collectives."""
         summary_enabled = bool(_param(getattr(self, "params", {}), "logging.summary_stdout", True))
         metrics = self._final_metrics() if summary_enabled else None
+        transition_details = self._final_neuron_transition_details() if summary_enabled else []
         if self.rank != 0:
             return
         scalars = self.environment.scalars
@@ -667,12 +778,89 @@ class ParkinsonModel:
                 f"extracellular_invariant_failures:{metrics['aggregates.extracellular.invariant_failures']}",
                 flush=True
             )
+            print(
+                "[summary] neuron_progression="
+                f"h2c:{metrics['neurons.transitions.healthy_to_compromised.count']} "
+                f"c2a:{metrics['neurons.transitions.compromised_to_apoptotic.count']} "
+                f"a2r:{metrics['neurons.transitions.apoptotic_to_ruptured.count']} "
+                f"avg_compromised_ticks:{metrics['neurons.state_time.compromised_avg_ticks']:.2f} "
+                f"avg_apoptotic_ticks:{metrics['neurons.state_time.apoptotic_avg_ticks']:.2f} "
+                f"compromised_recoveries:{metrics['neurons.recoveries.compromised_to_healthy']} "
+                f"number_of_neurons_ever_compromised:{metrics['neurons.ever_compromised']} "
+                f"number_of_neurons_ever_apoptotic:{metrics['neurons.ever_apoptotic']} "
+                f"number_of_neurons_ever_recovered:{metrics['neurons.ever_recovered']} "
+                f"blocked_by_min_ticks_compromised:{metrics['neurons.blocks.min_ticks_compromised']} "
+                f"blocked_by_apoptotic_internal_damage_threshold:{metrics['neurons.blocks.apoptotic_internal_damage_threshold']} "
+                f"final_by_rank:{self._format_final_state_by_rank(transition_details)}",
+                flush=True
+            )
+            print(
+                "[summary] neuron_transition_ticks="
+                f"h2c:{self._format_transition_ticks(transition_details, 'first_compromised_tick')} "
+                f"c2a:{self._format_transition_ticks(transition_details, 'first_apoptotic_tick')} "
+                f"a2r:{self._format_transition_ticks(transition_details, 'first_ruptured_tick')}",
+                flush=True
+            )
 
     def _progress_stdout_enabled(self) -> bool:
         """Return whether this rank should print progress information."""
         if self.rank != 0:
             return False
         return bool(_param(getattr(self, "params", {}), "logging.progress_stdout", True))
+
+    def _final_neuron_transition_details(self) -> list[dict[str, Any]]:
+        """Gather per-neuron transition timing details for the final summary."""
+        local_details = [
+            {
+                "uid": _uid_text(neuron),
+                "rank": self.rank,
+                "final_state": _state_value(getattr(neuron, "state", None)),
+                "first_compromised_tick": getattr(neuron, "first_compromised_tick", None),
+                "first_apoptotic_tick": getattr(neuron, "first_apoptotic_tick", None),
+                "first_ruptured_tick": getattr(neuron, "first_ruptured_tick", None),
+                "compromised_ticks_total": getattr(neuron, "compromised_ticks_total", 0),
+                "apoptotic_ticks_total": getattr(neuron, "apoptotic_ticks_total", 0),
+                "compromised_recoveries": getattr(neuron, "compromised_recoveries", 0)
+            }
+            for neuron in self.context.agents()
+            if isinstance(neuron, Neuron)
+        ]
+        allgather = getattr(getattr(self, "comm", None), "allgather", None)
+        if not callable(allgather):
+            return local_details
+        gathered = allgather(local_details)
+        details = []
+        for rank_details in gathered:
+            details.extend(rank_details)
+        return details
+
+    def _format_transition_ticks(self, details: list[dict[str, Any]], field: str) -> str:
+        """Format per-neuron first transition ticks compactly."""
+        values = [
+            f"{detail['uid']}:{detail[field]}"
+            for detail in sorted(details, key=lambda item: item["uid"])
+            if detail.get(field) is not None
+        ]
+        return ",".join(values) if values else "none"
+
+    def _format_final_state_by_rank(self, details: list[dict[str, Any]]) -> str:
+        """Format final neuron state distributions grouped by rank."""
+        grouped: dict[int, Counter] = {}
+        for detail in details:
+            rank = int(detail.get("rank", 0))
+            grouped.setdefault(rank, Counter())[detail.get("final_state", "Unknown")] += 1
+        if not grouped:
+            return "none"
+        parts = []
+        for rank in sorted(grouped):
+            counts = grouped[rank]
+            state_counts = "/".join(
+                f"{state}:{counts.get(state, 0)}"
+                for state in ("Healthy", "Compromised", "Apoptotic", "Ruptured", "Unknown")
+                if counts.get(state, 0) > 0
+            )
+            parts.append(f"rank{rank}={state_counts or 'none'}")
+        return ";".join(parts)
 
     def _final_metrics(self) -> dict[str, float]:
         """Return global end-of-run counts useful for pathology tuning."""
@@ -694,6 +882,18 @@ class ParkinsonModel:
                 global_metrics[f"aggregates.{compartment}.avg_size"] = global_metrics[f"aggregates.{compartment}.size_total"] / compartment_total
             else:
                 global_metrics[f"aggregates.{compartment}.avg_size"] = 0.0
+        compromised_count = global_metrics["neurons.state_time.compromised_neuron_count"]
+        apoptotic_count = global_metrics["neurons.state_time.apoptotic_neuron_count"]
+        global_metrics["neurons.state_time.compromised_avg_ticks"] = (
+            global_metrics["neurons.state_time.compromised_ticks_total"] / compromised_count
+            if compromised_count > 0
+            else 0.0
+        )
+        global_metrics["neurons.state_time.apoptotic_avg_ticks"] = (
+            global_metrics["neurons.state_time.apoptotic_ticks_total"] / apoptotic_count
+            if apoptotic_count > 0
+            else 0.0
+        )
         return global_metrics
 
     def _local_final_metrics(self) -> dict[str, float]:
@@ -703,6 +903,7 @@ class ParkinsonModel:
             if isinstance(agent, Neuron):
                 state = _metric_state_value(getattr(agent, "state", None), NEURON_METRIC_STATES)
                 metrics[f"neurons.{state}"] += 1
+                self._collect_neuron_transition_metrics(agent, metrics)
                 self._collect_neuron_internal_metrics(agent, metrics)
             elif isinstance(agent, Astrocyte):
                 state = _metric_state_value(getattr(agent, "state", None), ASTROCYTE_METRIC_STATES)
@@ -718,6 +919,30 @@ class ParkinsonModel:
         metrics = {key: 0 for key in FINAL_SUM_METRIC_KEYS}
         metrics.update({key: 0 for key in FINAL_MAX_METRIC_KEYS})
         return metrics
+
+    def _collect_neuron_transition_metrics(self, neuron: Neuron, metrics: dict[str, float]) -> None:
+        """Collect local neuron progression timing counters."""
+        if getattr(neuron, "first_compromised_tick", None) is not None:
+            metrics["neurons.transitions.healthy_to_compromised.count"] += 1
+            metrics["neurons.ever_compromised"] += 1
+        if getattr(neuron, "first_apoptotic_tick", None) is not None:
+            metrics["neurons.transitions.compromised_to_apoptotic.count"] += 1
+            metrics["neurons.ever_apoptotic"] += 1
+        if getattr(neuron, "first_ruptured_tick", None) is not None:
+            metrics["neurons.transitions.apoptotic_to_ruptured.count"] += 1
+        compromised_ticks = getattr(neuron, "compromised_ticks_total", 0)
+        apoptotic_ticks = getattr(neuron, "apoptotic_ticks_total", 0)
+        metrics["neurons.state_time.compromised_ticks_total"] += compromised_ticks
+        metrics["neurons.state_time.apoptotic_ticks_total"] += apoptotic_ticks
+        if compromised_ticks > 0:
+            metrics["neurons.state_time.compromised_neuron_count"] += 1
+        if apoptotic_ticks > 0:
+            metrics["neurons.state_time.apoptotic_neuron_count"] += 1
+        metrics["neurons.recoveries.compromised_to_healthy"] += getattr(neuron, "compromised_recoveries", 0)
+        metrics["neurons.blocks.min_ticks_compromised"] += getattr(neuron, "blocked_by_min_ticks_compromised", 0)
+        metrics["neurons.blocks.apoptotic_internal_damage_threshold"] += getattr(neuron, "blocked_by_apoptotic_internal_damage_threshold", 0)
+        if getattr(neuron, "compromised_recoveries", 0) > 0:
+            metrics["neurons.ever_recovered"] += 1
 
     def _collect_neuron_internal_metrics(self, neuron: Neuron, metrics: dict[str, float]) -> None:
         """Collect intracellular alpha and aggregate metrics for one neuron."""
@@ -889,6 +1114,15 @@ def _metric_state_value(state, allowed_states: tuple[str, ...]) -> str:
 def _alpha_member_id(alpha: AlphaSynuclein):
     """Return the membership id used by AlphaAggregate.member_ids."""
     return getattr(alpha, "uid", id(alpha))
+
+def _uid_text(agent) -> str:
+    """Return a compact stable uid string for final summaries."""
+    uid = getattr(agent, "uid", None)
+    if uid is None:
+        return str(id(agent))
+    if isinstance(uid, tuple):
+        return ":".join(str(item) for item in uid)
+    return str(uid)
 
 def _alpha_state_for_aggregate(state) -> str:
     """Infer member alpha state when only aggregate member ids are available."""

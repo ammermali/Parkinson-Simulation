@@ -466,6 +466,28 @@ class TestParkinsonModel:
         assert model.causal_logger.output_dir == tmp_path
         assert model.initialization_logger.output_dir == tmp_path
 
+    def test_tick_metrics_csv_records_one_global_row_per_tick(self, engine_module, tmp_path):
+        params = {
+            "stop.at": 2,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "logging": {
+                "enabled": False,
+                "output_dir": str(tmp_path),
+                "scalar_stdout": False,
+                "progress_stdout": False,
+                "tick_metrics_csv": True,
+            }}
+        model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+
+        model.step()
+
+        rows = (tmp_path / "tick_metrics.csv").read_text(encoding="utf-8").splitlines()
+        assert rows[0] == "tick,debris,inflammation,dopamine,neurons_healthy,neurons_compromised,neurons_apoptotic,neurons_ruptures,free_alpha,alpha_aggregate"
+        assert rows[1].startswith("1,")
+        assert rows[1].endswith(",0,0,0,0,0,0")
+
     def test_progress_stdout_reports_start_and_configured_tick_interval(self, engine_module, capsys):
         params = {
             "stop.at": 3,
@@ -512,6 +534,7 @@ class TestParkinsonModel:
         assert "[progress] tick 1/1" in output
         assert "[progress] completed at tick 1" in output
         assert "[summary] neurons=" in output
+        assert "[summary] neuron_progression=" in output
         assert model._finalized is True
 
     def test_non_root_rank_joins_summary_metric_collectives_without_printing(self, engine_module, capsys):
@@ -738,6 +761,67 @@ class TestParkinsonModel:
         metrics = model._local_final_metrics()
 
         assert metrics["aggregates.extracellular.invariant_failures"] == 1
+
+    def test_final_metrics_count_neuron_progression_timing(self, engine_module):
+        neuron_module = importlib.import_module("src.simulation.agents.neuron")
+        config = neuron_module.NeuronConfig(
+            per_radius=1,
+            nearby_alpha_high_threshold=0.7,
+            inflammation_high_threshold=0.7,
+            debris_high_threshold=0.7,
+            alpha_load_release_threshold=0.8,
+            damage_accumulation_rate=0.1,
+            damage_recovery_rate=0.1,
+            low_stress_threshold=0.1,
+            inflammation_damage_weight=0.3,
+            debris_damage_weight=0.3,
+            alpha_damage_weight=0.4,
+            compromised_threshold=0.4,
+            apoptotic_threshold=0.7,
+            ruptured_threshold=0.9,
+            dopamine_release_rate=0.2,
+            stress_inflammation_release_rate=0.1,
+            debris_release_rate=0.1,
+            alpha_absorption_rate=0.5,
+            alpha_release_amount=0.1,
+        )
+        neuron = engine_module.Neuron(1, 0, engine_module.AgentType.NEURON, config, alpha_type_id=3)
+        neuron.state = engine_module.NeuronState.APOPTOTIC
+        neuron.first_compromised_tick = 12
+        neuron.first_apoptotic_tick = 40
+        neuron.compromised_ticks_total = 20
+        neuron.apoptotic_ticks_total = 5
+        neuron.compromised_recoveries = 1
+        neuron.blocked_by_min_ticks_compromised = 3
+        neuron.blocked_by_apoptotic_internal_damage_threshold = 2
+
+        class TestContext:
+            def agents(self):
+                return [neuron]
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.context = TestContext()
+        model.environment = types.SimpleNamespace(
+            grid=types.SimpleNamespace(agent_registry=[]),
+            aggregate_registry=types.SimpleNamespace(
+                aggregate_for=lambda aggregate_id: None,
+                members=lambda aggregate_id: set(),
+            ),
+        )
+
+        metrics = model._local_final_metrics()
+
+        assert metrics["neurons.transitions.healthy_to_compromised.count"] == 1
+        assert metrics["neurons.transitions.compromised_to_apoptotic.count"] == 1
+        assert metrics["neurons.transitions.apoptotic_to_ruptured.count"] == 0
+        assert metrics["neurons.state_time.compromised_ticks_total"] == 20
+        assert metrics["neurons.state_time.apoptotic_ticks_total"] == 5
+        assert metrics["neurons.recoveries.compromised_to_healthy"] == 1
+        assert metrics["neurons.ever_compromised"] == 1
+        assert metrics["neurons.ever_apoptotic"] == 1
+        assert metrics["neurons.ever_recovered"] == 1
+        assert metrics["neurons.blocks.min_ticks_compromised"] == 3
+        assert metrics["neurons.blocks.apoptotic_internal_damage_threshold"] == 2
 
     def test_step_records_g0_field_nodes_when_causal_logging_is_enabled(self, engine_module, tmp_path):
         params = {

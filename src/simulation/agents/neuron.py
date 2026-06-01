@@ -76,7 +76,16 @@ class NeuronConfig:
     alpha_release_amount: float
     max_damage_increment_per_tick: float = 1.0
     compromised_dopamine_release_fraction: float = 0.6
+    apoptotic_internal_damage_threshold: float = 0.0
+    dopamine_factor_healthy: float = 1.0
+    dopamine_factor_compromised: Optional[float] = None
+    dopamine_factor_apoptotic: float = 0.0
+    dopamine_factor_ruptured: float = 0.0
     alpha_release_dopamine_fraction: float = 0.35
+    min_ticks_compromised_before_apoptotic: int = 0
+    min_ticks_apoptotic_before_ruptured: int = 0
+    rupture_internal_damage_threshold: float = 0.0
+    rupture_intracellular_debris_threshold: float = 0.0
 
 @dataclass
 class NeuronInternalConfig:
@@ -140,6 +149,16 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         # Cumulative value for cell damage
         self.cell_damage: float = 0.0
         self._rupture_payload_released = False
+        self.ticks_in_state: int = 0
+        self.first_compromised_tick: Optional[int] = None
+        self.first_apoptotic_tick: Optional[int] = None
+        self.first_ruptured_tick: Optional[int] = None
+        self.compromised_ticks_total: int = 0
+        self.apoptotic_ticks_total: int = 0
+        self.compromised_recoveries: int = 0
+        self.blocked_by_min_ticks_compromised: int = 0
+        self.blocked_by_apoptotic_internal_damage_threshold: int = 0
+        self._current_tick: Optional[int] = None
 
         # Environmental state
         self.internal_cfg = internal_config or NeuronInternalConfig()
@@ -210,6 +229,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         old_state = self.state
         if old_state == NeuronState.RUPTURED:
             self.cell_damage = max(self.cell_damage, self.cfg.ruptured_threshold)
+            self._record_state_tick(self.state)
+            self.ticks_in_state += 1
             return self.state
         p = self.last_perception
         external_stress = self._compute_external_stress(p)
@@ -218,7 +239,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         total_stress = clamp(0.5*external_stress + 0.5*internal_damage) # Mean between external and internal stress
 
         if total_stress <= self.cfg.low_stress_threshold:
-            self.cell_damage = clamp(self.cell_damage - self.cfg.damage_recovery_rate)
+            if self.state in (NeuronState.HEALTHY, NeuronState.COMPROMISED):
+                self.cell_damage = clamp(self.cell_damage - self.cfg.damage_recovery_rate)
         else:
             damage_increment = min(
                 total_stress * self.cfg.damage_accumulation_rate,
@@ -226,17 +248,26 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             )
             self.cell_damage = clamp(self.cell_damage + damage_increment)
 
-        if self.cell_damage >= self.cfg.ruptured_threshold:
-            self.state = NeuronState.RUPTURED
-        elif self.cell_damage >= self.cfg.apoptotic_threshold:
-            self.state = NeuronState.APOPTOTIC
-        elif self.cell_damage >= self.cfg.compromised_threshold:
-            self.state = NeuronState.COMPROMISED
+        candidate_state = self._state_from_damage(self.cell_damage)
+        final_state, block_reasons = self._apply_transition_gates(candidate_state, p)
+        self.state = final_state
+        self._record_transition_metrics(old_state, self.state)
+        if self.state == old_state:
+            self.ticks_in_state += 1
         else:
-            self.state = NeuronState.HEALTHY
+            self.ticks_in_state = 0
         logger = causal_logger_from(self)
-        if logger is not None and old_state != self.state:
-            if external_stress > 0:
+        if logger is not None:
+            self._log_damage_decision(
+                logger,
+                old_state,
+                external_stress,
+                internal_damage,
+                candidate_state,
+                final_state,
+                block_reasons,
+            )
+            if old_state != self.state and external_stress > 0:
                 source = logger.env_field_node("SN.external_stress", "external_stress", "1_perception", external_stress)
                 logger.threshold_trigger(
                     source,
@@ -247,7 +278,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
                     "external_stress contributes to total_stress",
                     compartment="Extracellular"
                 )
-            if internal_damage > 0:
+            if old_state != self.state and internal_damage > 0:
                 source = logger.internal_field_node(self, "internal_damage", "1_perception", internal_damage)
                 logger.threshold_trigger(
                     source,
@@ -259,14 +290,100 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
                     owner=self,
                     compartment="Intracellular"
                 )
-            logger.state_transition(
-                self,
-                old_state,
-                self.state,
-                "damage_accumulation",
-                rule_id="NEURON_DAMAGE_ACCUMULATION"
-            )
+            if old_state != self.state:
+                logger.state_transition(
+                    self,
+                    old_state,
+                    self.state,
+                    "damage_accumulation",
+                    rule_id="NEURON_DAMAGE_ACCUMULATION"
+                )
         return self.state
+
+    def _state_from_damage(self, cell_damage: float) -> NeuronState:
+        """Map cumulative cell damage to the ungated target state."""
+
+        if cell_damage >= self.cfg.ruptured_threshold:
+            return NeuronState.RUPTURED
+        if cell_damage >= self.cfg.apoptotic_threshold:
+            return NeuronState.APOPTOTIC
+        if cell_damage >= self.cfg.compromised_threshold:
+            return NeuronState.COMPROMISED
+        return NeuronState.HEALTHY
+
+    def _apply_transition_gates(self, candidate_state: NeuronState, perception: NeuronPerception) -> tuple[NeuronState, list[str]]:
+        """Slow pathological progression by enforcing state dwell and rupture gates."""
+
+        block_reasons: list[str] = []
+        if self.state == NeuronState.HEALTHY and candidate_state in (NeuronState.APOPTOTIC, NeuronState.RUPTURED):
+            block_reasons.append("blocked_by_stepwise_progression")
+            return NeuronState.COMPROMISED, block_reasons
+
+        if self.state == NeuronState.COMPROMISED and candidate_state in (NeuronState.APOPTOTIC, NeuronState.RUPTURED):
+            if self.ticks_in_state < self.cfg.min_ticks_compromised_before_apoptotic:
+                block_reasons.append("blocked_by_min_ticks_compromised")
+                self.blocked_by_min_ticks_compromised += 1
+                return NeuronState.COMPROMISED, block_reasons
+            if perception.internal_damage < self.cfg.apoptotic_internal_damage_threshold:
+                block_reasons.append("blocked_by_apoptotic_internal_damage_threshold")
+                self.blocked_by_apoptotic_internal_damage_threshold += 1
+                return NeuronState.COMPROMISED, block_reasons
+            if candidate_state == NeuronState.RUPTURED:
+                block_reasons.append("blocked_by_stepwise_progression")
+            return NeuronState.APOPTOTIC, block_reasons
+
+        if self.state == NeuronState.APOPTOTIC and candidate_state == NeuronState.RUPTURED:
+            if self.ticks_in_state < self.cfg.min_ticks_apoptotic_before_ruptured:
+                block_reasons.append("blocked_by_min_ticks_apoptotic")
+            if perception.internal_damage < self.cfg.rupture_internal_damage_threshold:
+                block_reasons.append("blocked_by_internal_damage_threshold")
+            if perception.intracellular_debris < self.cfg.rupture_intracellular_debris_threshold:
+                block_reasons.append("blocked_by_intracellular_debris_threshold")
+            if block_reasons:
+                return NeuronState.APOPTOTIC, block_reasons
+
+        return candidate_state, block_reasons
+
+    def _record_transition_metrics(self, old_state: NeuronState, new_state: NeuronState):
+        """Track first transition ticks, dwell time and compromised recovery."""
+
+        self._record_state_tick(new_state)
+        if old_state == new_state:
+            return
+        tick = self._current_tick
+        if old_state == NeuronState.HEALTHY and new_state == NeuronState.COMPROMISED and self.first_compromised_tick is None:
+            self.first_compromised_tick = tick
+        elif old_state == NeuronState.COMPROMISED and new_state == NeuronState.APOPTOTIC and self.first_apoptotic_tick is None:
+            self.first_apoptotic_tick = tick
+        elif old_state == NeuronState.APOPTOTIC and new_state == NeuronState.RUPTURED and self.first_ruptured_tick is None:
+            self.first_ruptured_tick = tick
+        elif old_state == NeuronState.COMPROMISED and new_state == NeuronState.HEALTHY:
+            self.compromised_recoveries += 1
+
+    def _record_state_tick(self, state: NeuronState):
+        """Accumulate time spent in intermediate pathological states."""
+
+        if state == NeuronState.COMPROMISED:
+            self.compromised_ticks_total += 1
+        elif state == NeuronState.APOPTOTIC:
+            self.apoptotic_ticks_total += 1
+
+    def _log_damage_decision(self, logger, old_state: NeuronState, external_stress: float, internal_damage: float, candidate_state: NeuronState, final_state: NeuronState, block_reasons: list[str]):
+        """Write compact G0 nodes explaining neuron damage gating."""
+
+        logger.internal_field_node(self, "cell_damage", "2_state_update", self.cell_damage)
+        logger.internal_field_node(self, "internal_damage", "1_perception", internal_damage)
+        logger.internal_field_node(self, "external_stress", "1_perception", external_stress)
+        logger.internal_field_node(self, "ticks_in_state", "2_state_update", self.ticks_in_state)
+        logger.internal_field_node(self, "old_state", "2_state_update", old_state.value)
+        logger.internal_field_node(self, "candidate_state", "2_state_update", candidate_state.value)
+        logger.internal_field_node(self, "final_state_after_gating", "2_state_update", final_state.value)
+        logger.internal_field_node(
+            self,
+            "transition_block_reason",
+            "2_state_update",
+            "|".join(block_reasons) if block_reasons else "none"
+        )
 
     def action(self) -> Optional[NeuronAction]:
         """Choose the neuron-level action for this tick."""
@@ -373,6 +490,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
         bind_causal_logger(self, model)
         self.bind_environment(model.environment)
+        self._current_tick = getattr(model, "tick_count", None)
         if self.state == NeuronState.RUPTURED:
             self.begin_tick()
             self.see(model)
@@ -436,10 +554,20 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
     def _dopamine_release_amount(self) -> float:
         """Return dopamine released by the current neuronal state."""
         if self.state == NeuronState.HEALTHY:
-            return self.cfg.dopamine_release_rate
-        if self.state == NeuronState.COMPROMISED:
-            return self.cfg.dopamine_release_rate * self.cfg.compromised_dopamine_release_fraction
-        return 0.0
+            state_factor = self.cfg.dopamine_factor_healthy
+        elif self.state == NeuronState.COMPROMISED:
+            state_factor = (
+                self.cfg.dopamine_factor_compromised
+                if self.cfg.dopamine_factor_compromised is not None
+                else self.cfg.compromised_dopamine_release_fraction
+            )
+        elif self.state == NeuronState.APOPTOTIC:
+            state_factor = self.cfg.dopamine_factor_apoptotic
+        elif self.state == NeuronState.RUPTURED:
+            state_factor = self.cfg.dopamine_factor_ruptured
+        else:
+            state_factor = 0.0
+        return self.cfg.dopamine_release_rate * clamp(state_factor)
 
     def _release_dopamine(self, env, fraction: float = 1.0) -> float:
         """Release state-scaled dopamine and return the emitted amount."""

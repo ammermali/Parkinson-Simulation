@@ -132,12 +132,21 @@ damage:
   damage_accumulation_rate: 0.25
   damage_recovery_rate: 0.02
   max_damage_increment_per_tick: 0.08
+  min_ticks_compromised_before_apoptotic: 11
+  min_ticks_apoptotic_before_ruptured: 13
+  apoptotic_internal_damage_threshold: 0.42
+  rupture_internal_damage_threshold: 0.45
+  rupture_intracellular_debris_threshold: 0.10
   inflammation_damage_weight: 0.35
   debris_damage_weight: 0.3
   alpha_damage_weight: 0.35
 rates:
   dopamine_release_rate: 0.18
   compromised_dopamine_release_fraction: 0.33
+  dopamine_factor_healthy: 1.0
+  dopamine_factor_compromised: 0.55
+  dopamine_factor_apoptotic: 0.15
+  dopamine_factor_ruptured: 0.0
   stress_inflammation_release_rate: 0.04
   debris_release_rate: 0.1
 alpha:
@@ -152,7 +161,16 @@ alpha:
 
     assert config.dopamine_release_rate == pytest.approx(0.18)
     assert config.compromised_dopamine_release_fraction == pytest.approx(0.33)
+    assert config.apoptotic_internal_damage_threshold == pytest.approx(0.42)
+    assert config.dopamine_factor_healthy == pytest.approx(1.0)
+    assert config.dopamine_factor_compromised == pytest.approx(0.55)
+    assert config.dopamine_factor_apoptotic == pytest.approx(0.15)
+    assert config.dopamine_factor_ruptured == pytest.approx(0.0)
     assert config.alpha_release_dopamine_fraction == pytest.approx(0.44)
+    assert config.min_ticks_compromised_before_apoptotic == 11
+    assert config.min_ticks_apoptotic_before_ruptured == 13
+    assert config.rupture_internal_damage_threshold == pytest.approx(0.45)
+    assert config.rupture_intracellular_debris_threshold == pytest.approx(0.10)
 
 
 def test_alpha_config_reads_non_random_misfolding_rates(tmp_path: Path):

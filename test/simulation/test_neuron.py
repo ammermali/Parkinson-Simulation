@@ -86,6 +86,7 @@ def make_perception(
     nearby_alpha: float = 0.0,
     inflammation: float = 0.0,
     debris: float = 0.0,
+    intracellular_debris: float = 0.0,
     internal_damage: float = 0.0,
     alpha_load: float = 0.0,
     cell_damage: float = 0.0,
@@ -96,7 +97,7 @@ def make_perception(
         inflammatory_levels=inflammation,
         extracellular_debris=debris,
         oxidative_stress=0.0,
-        intracellular_debris=0.0,
+        intracellular_debris=intracellular_debris,
         energy_demand=0.5,
         internal_damage=internal_damage,
         alpha_load=alpha_load,
@@ -194,13 +195,24 @@ class TestNeuron:
         assert neuron.cell_damage == pytest.approx(0.4)
         assert neuron.state == NeuronState.COMPROMISED
 
+    def test_apoptotic_neuron_does_not_use_compromised_recovery_rate(self):
+        neuron = make_neuron()
+        neuron.state = NeuronState.APOPTOTIC
+        neuron.cell_damage = 0.7
+        neuron.last_perception = make_perception(inflammation=0.0, debris=0.0, nearby_alpha=0.0, internal_damage=0.0)
+
+        neuron.next()
+
+        assert neuron.cell_damage == pytest.approx(0.7)
+        assert neuron.state == NeuronState.APOPTOTIC
+
     @pytest.mark.parametrize(
         ("internal_damage", "expected_state"),
         [
             (0.4, NeuronState.HEALTHY),
             (0.8, NeuronState.COMPROMISED),
-            (1.2, NeuronState.APOPTOTIC),
-            (2.0, NeuronState.RUPTURED),
+            (1.2, NeuronState.COMPROMISED),
+            (2.0, NeuronState.COMPROMISED),
         ],
     )
     def test_next_sets_state_from_accumulated_damage_thresholds(self, internal_damage, expected_state):
@@ -208,6 +220,79 @@ class TestNeuron:
         neuron.last_perception = make_perception(internal_damage=internal_damage)
         neuron.next()
         assert neuron.state == expected_state
+
+    def test_compromised_state_requires_minimum_dwell_before_apoptotic(self):
+        config = make_config()
+        config.min_ticks_compromised_before_apoptotic = 3
+        neuron = Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+        neuron.state = NeuronState.COMPROMISED
+        neuron.cell_damage = config.apoptotic_threshold
+        neuron.ticks_in_state = 2
+        neuron.last_perception = make_perception(internal_damage=1.0)
+
+        neuron.next()
+
+        assert neuron.state == NeuronState.COMPROMISED
+        assert neuron.ticks_in_state == 3
+
+    def test_compromised_state_advances_to_apoptotic_after_minimum_dwell(self):
+        config = make_config()
+        config.min_ticks_compromised_before_apoptotic = 3
+        neuron = Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+        neuron.state = NeuronState.COMPROMISED
+        neuron.cell_damage = config.apoptotic_threshold
+        neuron.ticks_in_state = 3
+        neuron.last_perception = make_perception(internal_damage=1.0)
+
+        neuron.next()
+
+        assert neuron.state == NeuronState.APOPTOTIC
+        assert neuron.ticks_in_state == 0
+
+    def test_compromised_state_requires_internal_damage_before_apoptotic(self):
+        config = make_config()
+        config.min_ticks_compromised_before_apoptotic = 3
+        config.apoptotic_internal_damage_threshold = 0.75
+        neuron = Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+        neuron.state = NeuronState.COMPROMISED
+        neuron.cell_damage = config.apoptotic_threshold
+        neuron.ticks_in_state = 3
+        neuron.last_perception = make_perception(internal_damage=0.5)
+
+        neuron.next()
+
+        assert neuron.state == NeuronState.COMPROMISED
+        assert neuron.blocked_by_apoptotic_internal_damage_threshold == 1
+
+    def test_apoptotic_state_requires_dwell_and_internal_damage_before_rupture(self):
+        config = make_config()
+        config.min_ticks_apoptotic_before_ruptured = 5
+        config.rupture_internal_damage_threshold = 0.8
+        config.rupture_intracellular_debris_threshold = 0.2
+        neuron = Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+        neuron.state = NeuronState.APOPTOTIC
+        neuron.cell_damage = config.ruptured_threshold
+        neuron.ticks_in_state = 4
+        neuron.last_perception = make_perception(internal_damage=0.7)
+
+        neuron.next()
+
+        assert neuron.state == NeuronState.APOPTOTIC
+
+    def test_apoptotic_state_ruptures_when_all_gates_pass(self):
+        config = make_config()
+        config.min_ticks_apoptotic_before_ruptured = 5
+        config.rupture_internal_damage_threshold = 0.8
+        config.rupture_intracellular_debris_threshold = 0.2
+        neuron = Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+        neuron.state = NeuronState.APOPTOTIC
+        neuron.cell_damage = config.ruptured_threshold
+        neuron.ticks_in_state = 5
+        neuron.last_perception = make_perception(internal_damage=1.0, intracellular_debris=0.3)
+
+        neuron.next()
+
+        assert neuron.state == NeuronState.RUPTURED
 
     def test_action_prioritizes_ruptured_dump_debris(self):
         neuron = make_neuron()
@@ -272,6 +357,19 @@ class TestNeuron:
         neuron.last_perception = make_perception(inflammation=0.1, debris=0.1, nearby_alpha=0.0)
         neuron.action()
         assert neuron.pending_action == NeuronAction.R_DOPAMINE
+
+    def test_dopamine_release_uses_state_specific_factor(self):
+        config = make_config()
+        config.dopamine_factor_compromised = 0.25
+        neuron = Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+        environment = TestSubstantiaNigraLikeEnvironment()
+        neuron.state = NeuronState.COMPROMISED
+        neuron.last_perception = make_perception()
+        neuron.pending_action = NeuronAction.R_DOPAMINE
+
+        neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
+
+        assert environment.released_dopamine == pytest.approx(0.05)
 
     def test_do_release_dopamine_updates_environment(self):
         neuron = make_neuron()

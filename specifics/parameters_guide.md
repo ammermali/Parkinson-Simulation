@@ -35,6 +35,7 @@ Global runtime, population, world and logging parameters.
 | `logging.causal.enabled` | `true` | Enables G0 causal nodes and edges. Useful for mechanism analysis.                                                          |
 | `logging.initialization.enabled` | `true` | Writes initial agent conditions and baseline alpha nodes.                                                                  |
 | `logging.scalar_stdout` | `true` | Prints main extracellular scalars every tick.                                                                              |
+| `logging.tick_metrics_csv` | `true` | Writes `tick_metrics.csv` with global per-tick scalars and compact state counts.                                           |
 | `logging.progress_stdout` | `true` | Prints progress and final summary from rank 0.                                                                             |
 | `logging.progress_interval` | `25` | Tick interval for progress messages.                                                                                       |
 | `logging.summary_stdout` | `true` | Prints end-of-run counts for neurons, glia, alpha and aggregates.                                                          |
@@ -66,31 +67,40 @@ Controls extracellular perception, cumulative damage, alpha transmission and eac
 | Parameter | Current | Effect |
 |---|---:|---|
 | `perception.per_radius` | `1` | Radius for sensing extracellular alpha density. |
-| `thresholds.nearby_alpha_high_threshold.mean` | `0.65` | Mean nearby-alpha threshold for absorption/stress decisions. Higher values reduce alpha-driven response. |
+| `thresholds.nearby_alpha_high_threshold.mean` | `0.58` | Mean nearby-alpha threshold for absorption/stress decisions. Higher values reduce alpha-driven response. |
 | `thresholds.nearby_alpha_high_threshold.std` | `0.08` | Heterogeneity in nearby-alpha sensitivity. |
 | `thresholds.inflammation_high_threshold.mean` | `0.7` | Mean inflammation threshold for stress signaling. |
 | `thresholds.inflammation_high_threshold.std` | `0.05` | Heterogeneity in inflammatory sensitivity. |
 | `thresholds.debris_high_threshold.mean` | `0.6` | Mean extracellular debris threshold for stress signaling. |
 | `thresholds.debris_high_threshold.std` | `0.05` | Heterogeneity in debris sensitivity. |
-| `thresholds.alpha_load_release_threshold.mean` | `0.14` | Mean intracellular alpha-load threshold for non-rupture alpha release. Higher values delay transmission. |
+| `thresholds.alpha_load_release_threshold.mean` | `0.10` | Mean intracellular alpha-load threshold for non-rupture alpha release. Higher values delay transmission. |
 | `thresholds.alpha_load_release_threshold.std` | `0.02` | Heterogeneity in alpha-load release threshold. |
 | `thresholds.low_stress_threshold.mean` | `0.12` | Total stress threshold below which cell damage can recover. |
 | `thresholds.low_stress_threshold.std` | `0.02` | Heterogeneity in recovery tolerance. |
 | `thresholds.compromised_threshold` | `0.28` | Cumulative damage required for `Compromised`. |
-| `thresholds.apoptotic_threshold` | `0.7` | Cumulative damage required for `Apoptotic`. |
-| `thresholds.ruptured_threshold` | `0.97` | Cumulative damage required for `Ruptured`. |
-| `damage.damage_accumulation_rate` | `0.25` | Converts total stress into cumulative cell damage. Higher values accelerate pathology. |
-| `damage.damage_recovery_rate` | `0.02` | Damage removed per low-stress tick. |
-| `damage.max_damage_increment_per_tick` | `0.08` | Upper bound on damage gained in one tick. |
+| `thresholds.apoptotic_threshold` | `0.78` | Cumulative damage required for `Apoptotic`. Higher values keep neurons `Compromised` longer. |
+| `thresholds.ruptured_threshold` | `0.985` | Cumulative damage required for `Ruptured`. |
+| `damage.damage_accumulation_rate` | `0.22` | Converts total stress into cumulative cell damage. Higher values accelerate pathology. |
+| `damage.damage_recovery_rate` | `0.022` | Damage removed per low-stress tick for `Healthy` and `Compromised` neurons; it does not recover `Apoptotic` neurons. |
+| `damage.max_damage_increment_per_tick` | `0.05` | Upper bound on damage gained in one tick, preventing rapid threshold skipping. |
+| `damage.min_ticks_compromised_before_apoptotic` | `25` | Minimum ticks a neuron must remain `Compromised` before it can become `Apoptotic`. |
+| `damage.min_ticks_apoptotic_before_ruptured` | `20` | Minimum ticks a neuron must remain `Apoptotic` before it can become `Ruptured`. |
+| `damage.apoptotic_internal_damage_threshold` | `0.35` | Minimum internal damage required for a `Compromised` neuron to become `Apoptotic`; blocks purely extracellular apoptotic jumps. |
+| `damage.rupture_internal_damage_threshold` | `0.45` | Minimum internal damage required for rupture once cumulative damage is high enough. |
+| `damage.rupture_intracellular_debris_threshold` | `0.10` | Minimum intracellular debris required for rupture once cumulative damage is high enough. |
 | `damage.inflammation_damage_weight` | `0.35` | Inflammation contribution to extracellular neuron stress. |
 | `damage.debris_damage_weight` | `0.3` | Extracellular debris contribution to neuron stress. |
-| `damage.alpha_damage_weight` | `0.25` | Nearby alpha contribution to neuron stress. Lower values reduce alpha-driven rupture pressure. |
+| `damage.alpha_damage_weight` | `0.31` | Nearby alpha contribution to neuron stress. Lower values reduce alpha-driven rupture pressure. |
 | `rates.dopamine_release_rate` | `0.18` | Dopamine released by a healthy neuron before normalization. |
 | `rates.compromised_dopamine_release_fraction` | `0.6` | Fraction of healthy dopamine release retained by `Compromised` neurons. |
+| `rates.dopamine_factor_healthy` | `1.0` | State-specific dopamine factor for `Healthy` neurons. |
+| `rates.dopamine_factor_compromised` | `0.55` | State-specific dopamine factor for `Compromised` neurons. |
+| `rates.dopamine_factor_apoptotic` | `0.15` | Residual dopamine factor for `Apoptotic` neurons when they perform dopamine-coupled release. |
+| `rates.dopamine_factor_ruptured` | `0.0` | Dopamine factor for `Ruptured` neurons. |
 | `rates.stress_inflammation_release_rate` | `0.04` | Inflammation released by a neuron choosing the stress action. |
 | `rates.debris_release_rate` | `0.1` | One-shot debris payload released by rupture. |
-| `alpha.alpha_absorption_rate` | `0.06` | Probability that a candidate extracellular alpha/aggregate is absorbed. |
-| `alpha.alpha_release_amount` | `0.03` | Fraction of eligible alpha pathology released by non-ruptured leakage. |
+| `alpha.alpha_absorption_rate` | `0.08` | Probability that a candidate extracellular alpha/aggregate is absorbed. |
+| `alpha.alpha_release_amount` | `0.04` | Fraction of eligible alpha pathology released by non-ruptured leakage. |
 | `alpha.alpha_release_dopamine_fraction` | `0.35` | Fraction of state-dependent dopamine retained while a functional neuron releases alpha. |
 | `intracellular.grid.height` | `5` | Internal grid height. Larger values dilute local intracellular encounters. |
 | `intracellular.grid.width` | `5` | Internal grid width. Larger values dilute local intracellular encounters. |

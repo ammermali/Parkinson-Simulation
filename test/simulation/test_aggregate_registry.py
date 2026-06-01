@@ -14,6 +14,7 @@ AggregateState = aggregate_module.AggregateState
 
 registry_module = import_any("src.simulation.agents.aggregate_registry")
 AggregateRegistry = registry_module.AggregateRegistry
+AggregateInvariantError = registry_module.AggregateInvariantError
 
 neuron_module = import_any("src.simulation.agents.neuron")
 Neuron = neuron_module.Neuron
@@ -138,6 +139,63 @@ class TestAggregateRegistry:
 
         assert lewy_body.size == 4
         assert lewy_body.state == AggregateState.LEWY_BODY
+        assert {member.state for member in registry.members(lewy_body.aggregate_id)} == {
+            AlphaSynucleinState.LEWY_BODY
+        }
         assert oligomer not in neuron.grid.agent_registry
         assert registry.aggregate_for(oligomer.aggregate_id) is None
         assert registry.size(lewy_body.aggregate_id) == 4
+
+    def test_mature_to_lewy_body_accepts_aggregate_id_and_updates_all_members(self):
+        neuron = make_neuron()
+        registry = AggregateRegistry(lewy_body_size_threshold=999, rng=TestRng(random_value=1.0))
+        point = DiscretePoint(1, 1)
+        members = [make_alpha(1, neuron), make_alpha(2, neuron)]
+        for alpha in members:
+            neuron.add_agent(alpha, point)
+        aggregate = registry.create_aggregate(neuron, point, members)
+
+        assert registry.mature_to_lewy_body(aggregate.aggregate_id) is True
+
+        assert aggregate.state == AggregateState.LEWY_BODY
+        assert {member.state for member in registry.members(aggregate.aggregate_id)} == {
+            AlphaSynucleinState.LEWY_BODY
+        }
+        assert {member.aggregate_id for member in registry.members(aggregate.aggregate_id)} == {
+            aggregate.aggregate_id
+        }
+
+    def test_validate_invariants_rejects_lewy_body_with_non_lewy_members(self):
+        neuron = make_neuron()
+        registry = AggregateRegistry(lewy_body_size_threshold=999, rng=TestRng(random_value=1.0))
+        point = DiscretePoint(1, 1)
+        members = [make_alpha(1, neuron), make_alpha(2, neuron)]
+        for alpha in members:
+            neuron.add_agent(alpha, point)
+        aggregate = registry.create_aggregate(neuron, point, members, state=AggregateState.LEWY_BODY)
+        next(iter(registry.members(aggregate.aggregate_id))).state = AlphaSynucleinState.OLIGOMER
+
+        try:
+            registry.validate_invariants(neuron)
+        except AggregateInvariantError:
+            pass
+        else:
+            raise AssertionError("Expected inconsistent Lewy body members to fail validation.")
+
+    def test_removing_last_member_removes_aggregate_and_clears_member(self):
+        neuron = make_neuron()
+        registry = AggregateRegistry(lewy_body_size_threshold=999, rng=TestRng(random_value=1.0))
+        point = DiscretePoint(1, 1)
+        members = [make_alpha(1, neuron), make_alpha(2, neuron)]
+        for alpha in members:
+            neuron.add_agent(alpha, point)
+        aggregate = registry.create_aggregate(neuron, point, members, state=AggregateState.LEWY_BODY)
+
+        registry.remove(members[0], habitat=neuron)
+        assert registry.aggregate_for(aggregate.aggregate_id) is aggregate
+        assert members[0].state == AlphaSynucleinState.CLEARED
+        registry.remove(members[1], habitat=neuron)
+
+        assert registry.aggregate_for(aggregate.aggregate_id) is None
+        assert aggregate not in neuron.grid.agent_registry
+        assert {member.state for member in members} == {AlphaSynucleinState.CLEARED}

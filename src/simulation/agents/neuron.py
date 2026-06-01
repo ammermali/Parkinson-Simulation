@@ -696,9 +696,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def remove_agent(self, agent: AdaptiveAgent):
         """Remove an intracellular agent and all neuron bookkeeping for it."""
-
         self.grid.remove_agent(agent)
-        self.aggregate_registry.remove(agent)
+        self.aggregate_registry.remove(agent, habitat=self)
         self.clear_degradation_assignment(agent)
         self.clear_assignments_for_target(agent)
         if agent in self.degradation_targets:

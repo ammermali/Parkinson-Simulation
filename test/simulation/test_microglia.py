@@ -113,6 +113,17 @@ class TestMicroglia:
         microglia.action()
         assert microglia.pending_action == expected_action
 
+    def test_activated_microglia_scans_when_context_pressure_is_low(self):
+        config = make_config()
+        config.inflammatory_action_threshold = 0.5
+        microglia = Microglia(local_id=1, rank=0, type_id=2, config=config, alpha_type_id=9)
+        microglia.state = MicrogliaState.ACTIVATED
+        microglia.last_perception = MicrogliaPerception(None, extracellular_debris=0.1, inflammation_level=0.1, nearby_alpha=0.1)
+
+        microglia.action()
+
+        assert microglia.pending_action == MicrogliaAction.SCAN
+
     def test_do_clear_debris_removes_debris_from_environment(self):
         microglia = Microglia(local_id=1, rank=0, type_id=2, config=make_config(), alpha_type_id=9)
         environment = TestSubstantiaNigraLikeEnvironment()

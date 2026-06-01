@@ -73,6 +73,7 @@ dynamics:
   activation_transition_rate: 0.21
   clearing_transition_rate: 0.22
   recovery_transition_rate: 0.23
+  inflammatory_action_threshold: 0.24
 """,
         encoding="utf-8",
     )
@@ -85,6 +86,7 @@ dynamics:
     assert config.activation_transition_rate == pytest.approx(0.21)
     assert config.clearing_transition_rate == pytest.approx(0.22)
     assert config.recovery_transition_rate == pytest.approx(0.23)
+    assert config.inflammatory_action_threshold == pytest.approx(0.24)
 
 
 def test_sampled_thresholds_are_clamped(tmp_path: Path):

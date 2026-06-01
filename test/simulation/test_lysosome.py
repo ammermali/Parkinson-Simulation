@@ -189,6 +189,27 @@ class TestLysosome:
         assert neuron.aggregate_registry.aggregate_for(aggregate.aggregate_id) is None
         assert {member.state for member in members} == {AlphaSynucleinState.CLEARED}
 
+    def test_successful_member_degradation_updates_owning_aggregate(self):
+        neuron = make_neuron()
+        lysosome = make_lysosome(neuron)
+        point = DiscretePoint(1, 1)
+        members = [make_alpha(1, neuron), make_alpha(2, neuron)]
+        for alpha in members:
+            neuron.add_agent(alpha, point)
+        aggregate = neuron.aggregate_registry.create_aggregate(
+            neuron,
+            point,
+            members,
+            state=AggregateState.LEWY_BODY,
+        )
+
+        lysosome._complete_degradation(neuron, members[0])
+
+        assert members[0].state == AlphaSynucleinState.CLEARED
+        assert neuron.aggregate_registry.aggregate_for(aggregate.aggregate_id) is aggregate
+        assert aggregate.size == 1
+        assert next(iter(neuron.aggregate_registry.members(aggregate.aggregate_id))).state == AlphaSynucleinState.LEWY_BODY
+
     def test_successful_mitochondrion_degradation_repairs_without_removing_from_grid(self):
         neuron = make_neuron()
         lysosome = make_lysosome(

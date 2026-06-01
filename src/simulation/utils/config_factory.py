@@ -58,7 +58,8 @@ class ConfigFactory:
             move_probability=_number(movement, "move_probability"),
             activation_transition_rate=_number_or(dynamics, "activation_transition_rate", 1.0),
             clearing_transition_rate=_number_or(dynamics, "clearing_transition_rate", 1.0),
-            recovery_transition_rate=_number_or(dynamics, "recovery_transition_rate", 1.0)
+            recovery_transition_rate=_number_or(dynamics, "recovery_transition_rate", 1.0),
+            inflammatory_action_threshold=_number_or(dynamics, "inflammatory_action_threshold", 0.0)
         )
 
     @staticmethod

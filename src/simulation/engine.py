@@ -12,24 +12,9 @@ Its job is to wire together the simulation runtime:
 The actual agent behavior remains inside the agent classes."""
 
 from __future__ import annotations
-
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
-
-
-def _ensure_project_root_on_path() -> None:
-    """Allow direct execution from src/simulation with python engine.py."""
-    project_root = Path(__file__).resolve().parents[2]
-    project_root_path = str(project_root)
-    if project_root_path not in sys.path:
-        sys.path.insert(0, project_root_path)
-
-
-if __package__ in (None, ""):
-    _ensure_project_root_on_path()
-
 from mpi4py import MPI
 from repast4py import context as ctx
 from repast4py import random
@@ -262,7 +247,7 @@ class ParkinsonModel:
         2. let each extracellular macro-agent run one step;
         3. commit extracellular scalar effects;
         4. optionally synchronize distributed agents;
-        5. emit a runtime log. #TODO
+        5. emit a runtime log.
         Neurons run their own intracellular phase inside Neuron.step()
         That keeps internal alpha, aggregate, mitochondrion and lysosome logic
         synchronized before the neuron itself acts on the extracellular space."""
@@ -281,7 +266,7 @@ class ParkinsonModel:
         self.environment.commit_effects(max_possible_dopamine=self._max_possible_dopamine())
         # Future distributed runs that move agents across MPI rank boundaries
         # should synchronize here with a restore_agent function.
-        # self.context.synchronize(restore_agent) # TODO ?
+        # self.context.synchronize(restore_agent)
         self._record_scalar_tick()
         self._log_tick()
 

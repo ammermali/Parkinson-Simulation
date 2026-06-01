@@ -46,6 +46,7 @@ class MicrogliaConfig:
     activation_transition_rate: float = 1.0
     clearing_transition_rate: float = 1.0
     recovery_transition_rate: float = 1.0
+    inflammatory_action_threshold: float = 0.0
 
 class Microglia(AdaptiveAgent):
     """Extracellular immune agent that clears debris or amplifies inflammation."""
@@ -140,7 +141,10 @@ class Microglia(AdaptiveAgent):
         elif self.state == MicrogliaState.CLEARING:
             self.pending_action = MicrogliaAction.CLEAR_DEBRIS
         elif self.state == MicrogliaState.ACTIVATED:
-            self.pending_action = MicrogliaAction.INFLAMMATION
+            if self._should_release_inflammation():
+                self.pending_action = MicrogliaAction.INFLAMMATION
+            else:
+                self.pending_action = MicrogliaAction.SCAN
         logger = causal_logger_from(self)
         if logger is not None:
             logger.action_selection(self, self.pending_action, "microglia_state_action_policy")
@@ -278,6 +282,13 @@ class Microglia(AdaptiveAgent):
             self.cfg.nearby_alpha_low_threshold,
             self.cfg.nearby_alpha_high_threshold
         )
+
+    def _should_release_inflammation(self) -> bool:
+        """Return whether Activated microglia should release inflammation now."""
+        if self.last_perception is None:
+            return True
+        pressure = max(self._alpha_pressure(self.last_perception), self._inflammation_pressure(self.last_perception), 0.5 * self._debris_pressure(self.last_perception))
+        return pressure >= self.cfg.inflammatory_action_threshold
 
     def _normalized_pressure(self, value: float, low: float, high: float) -> float:
         """Normalize a scalar between low and high thresholds."""

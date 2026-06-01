@@ -274,8 +274,26 @@ class CausalTraceLogger:
 
     def aggregation(self, source_agent, aggregate_agent, mechanism: str, aggregate_id: Optional[int] = None, owner=None, outcome: str = "aggregated") -> None:
         source = self.agent_state_node(source_agent, getattr(source_agent, "state", None), "2_state_update", owner=owner, compartment="Intracellular")
-        target = self.node("aggregate", "4_effect_buffer", uid=uid_of(aggregate_agent), agent_type=type_name(aggregate_agent), state=getattr(aggregate_agent, "state", None), level="intracellular", owner_uid=uid_of(owner), compartment="Intracellular", label=f"Aggregate_{aggregate_id or getattr(aggregate_agent, 'aggregate_id', '')}")
+        target = self.aggregate_snapshot(aggregate_agent, aggregate_id=aggregate_id, owner=owner)
         self.edge(source, target, "aggregation", mechanism, rule_id="ALPHA_AGGREGATION", outcome=outcome, compartment="Intracellular", owner_uid=uid_of(owner))
+
+    def aggregate_snapshot(self, aggregate_agent, aggregate_id: Optional[int] = None, owner=None, phase: str = "4_effect_buffer") -> CausalNode:
+        """Aggregate node."""
+        resolved_id = aggregate_id or getattr(aggregate_agent, "aggregate_id", "")
+        state = getattr(aggregate_agent, "state", None)
+        state_value = value_of(state) or "unknown"
+        return self.node(
+            "aggregate",
+            phase,
+            uid=uid_of(aggregate_agent),
+            agent_type=type_name(aggregate_agent),
+            state=state,
+            value=getattr(aggregate_agent, "size", None),
+            level="intracellular",
+            owner_uid=uid_of(owner),
+            compartment="Intracellular",
+            label=f"Aggregate_{resolved_id}.{state_value}"
+        )
 
     def degradation(self, lysosome, target_agent, mechanism: str, outcome: str, probability: Optional[float] = None, rng_value: Optional[float] = None, owner=None) -> None:
         source = self.action_node(lysosome, getattr(lysosome, "pending_action", None), "3_action_selection", owner=owner, compartment="Intracellular")
@@ -384,6 +402,7 @@ class CausalTraceLogger:
                 "Runtime causal logs intentionally omit positions and raw perceptions.",
                 "Full initial positions and configurations are stored by InitializationLogger.",
                 "Initial AlphaSynuclein state nodes are written at tick 0 so non-reactive proteins remain visible in G0 analyses.",
+                "Aggregate nodes carry the current aggregate state and member count in value, enabling LewyBody size summaries.",
                 "MPI ranks write rank-local JSONL files first; rank 0 merges them at close to keep JSONL rows atomic."
             ],
         }

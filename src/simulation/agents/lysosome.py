@@ -332,8 +332,12 @@ class Lysosome(AdaptiveAgent):
             habitat.unregister_degradation_target(target)
             outcome = "mitochondrion_repaired"
         elif isinstance(target, AlphaSynuclein):
-            target.mark_cleared()
-            habitat.unregister_degradation_target(target)
+            if target.aggregate_id is not None:
+                habitat.aggregate_registry.remove(target, habitat=habitat)
+                habitat.unregister_degradation_target(target)
+            else:
+                target.mark_cleared()
+                habitat.unregister_degradation_target(target)
             outcome = "protein_cleared"
         else:
             habitat.remove_agent(target)

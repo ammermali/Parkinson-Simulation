@@ -72,7 +72,7 @@ class AlphaSynuclein(AdaptiveAgent):
     @property
     def is_free(self) -> bool:
         """Whether this protein is active as an individual grid agent."""
-        return self.aggregate_id is None and self.state != AlphaSynucleinState.CLEARED
+        return self.aggregate_id is None and self.state not in (AlphaSynucleinState.CLEARED, AlphaSynucleinState.LEWY_BODY)
 
     @property
     def can_seed_oligomerization(self) -> bool:

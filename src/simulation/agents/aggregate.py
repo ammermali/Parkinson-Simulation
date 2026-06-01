@@ -57,9 +57,10 @@ class AlphaAggregate(AdaptiveAgent):
     @property
     def aggregate_weight(self) -> float:
         """Contribution to local aggregate density and neuron alpha load."""
+        size_bonus = max(0, self.size - 1)
         if self.state == AggregateState.LEWY_BODY:
-            return 1.0
-        return 0.75
+            return min(2.0, 1.0 + 0.10 * size_bonus)
+        return min(1.25, 0.75 + 0.05 * size_bonus)
 
     @property
     def is_lewy_body(self) -> bool:

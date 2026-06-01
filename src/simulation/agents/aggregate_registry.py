@@ -11,9 +11,7 @@ class AggregateRegistry:
     AlphaSynuclein agents only decide whether they want to oligomerize. This
     registry resolves the collective spatial event, like aggregating agents,
     absorbing free misfolded proteins, merging aggregates and maturing oligomers
-    into Lewy bodies.
-    """
-
+    into Lewy bodies."""
     def __init__(self, lewy_body_size_threshold: int = 8, aggregate_type_id: Optional[int] = None, rng: Optional[RNG] = None):
         self._next_id: int = 0
         self._aggregates: dict[int, AlphaAggregate] = {}
@@ -24,7 +22,7 @@ class AggregateRegistry:
 
     def process(self, habitat):
         """Process one aggregation phase for all intracellular agents."""
-
+        self.prune_cleared_aggregates(habitat)
         for point, agents in self._agents_by_cell(habitat):
             free_candidates = [
                 agent
@@ -39,6 +37,8 @@ class AggregateRegistry:
             for aggregate in aggregates:
                 aggregate.causal_logger = getattr(habitat, "causal_logger", None)
             self._process_cell(habitat, point, free_candidates, aggregates)
+        self.prune_cleared_aggregates(habitat)
+        self.validate_invariants(habitat)
 
     def aggregates(self) -> list[AlphaAggregate]:
         """Return aggregate agents currently owned by this registry."""
@@ -59,9 +59,73 @@ class AggregateRegistry:
             return 0
         return aggregate.size
 
+    def validate_invariants(self, habitat=None):
+        """Fail fast when aggregate/member bookkeeping is incoherent."""
+        lewy_aggregate_count = 0
+        lewy_member_count = 0
+        for aggregate_id, aggregate in self._aggregates.items():
+            members = self._members.get(aggregate_id, set())
+            if aggregate.size == 0 or not members:
+                raise RuntimeError()
+            if aggregate.member_ids != {self._member_id(member) for member in members}:
+                raise RuntimeError()
+            if habitat is not None and aggregate not in habitat.grid.agent_registry:
+                raise RuntimeError()
+            aggregate_lewy_members = 0
+            for member in members:
+                if member.aggregate_id != aggregate_id:
+                    raise RuntimeError()
+                if member.state == AlphaSynucleinState.CLEARED:
+                    raise RuntimeError()
+                if habitat is not None and member in habitat.grid.agent_registry:
+                    raise RuntimeError()
+                if member.state == AlphaSynucleinState.LEWY_BODY:
+                    lewy_member_count += 1
+                    aggregate_lewy_members += 1
+            if aggregate.state == AggregateState.LEWY_BODY:
+                lewy_aggregate_count += 1
+                if aggregate_lewy_members == 0:
+                    raise RuntimeError()
+                if aggregate_lewy_members != len(members):
+                    raise RuntimeError()
+        tracked_member_ids = {
+            id(member)
+            for members in self._members.values()
+            for member in members
+        }
+        for members in self._members.values():
+            for member in members:
+                if member.aggregate_id not in self._aggregates:
+                    raise RuntimeError()
+        if lewy_member_count < lewy_aggregate_count:
+            raise RuntimeError()
+        for aggregate in self._aggregates.values():
+            for member in aggregate.member_agents:
+                if member.state == AlphaSynucleinState.LEWY_BODY and id(member) not in tracked_member_ids:
+                    raise RuntimeError()
+        if habitat is not None:
+            for agent in habitat.grid.agent_registry:
+                if not isinstance(agent, AlphaSynuclein):
+                    continue
+                if agent.state == AlphaSynucleinState.LEWY_BODY and agent.aggregate_id not in self._aggregates:
+                    raise RuntimeError()
+
+    def prune_cleared_aggregates(self, habitat=None):
+        """Remove aggregates whose tracked proteins have all been cleared."""
+        for aggregate_id, aggregate in list(self._aggregates.items()):
+            members = self._members.get(aggregate_id, set())
+            if members and not all(member.state == AlphaSynucleinState.CLEARED for member in members):
+                continue
+            if habitat is not None and aggregate in habitat.grid.agent_registry:
+                habitat.grid.remove_agent(aggregate)
+                self._untrack_degradation_target(habitat, aggregate)
+            self._aggregates.pop(aggregate_id, None)
+            self._members.pop(aggregate_id, None)
+            aggregate.member_ids.clear()
+            aggregate.member_agents.clear()
+
     def create_aggregate(self, habitat, point: DiscretePoint, members: Iterable[AlphaSynuclein], state: AggregateState = AggregateState.OLIGOMER) -> Optional[AlphaAggregate]:
         """Create one AlphaAggregate from two or more free proteins."""
-
         members = [
             member
             for member in members
@@ -89,6 +153,7 @@ class AggregateRegistry:
         if state == AggregateState.LEWY_BODY:
             self._set_members_state(aggregate, AlphaSynucleinState.LEWY_BODY)
         self._register_degradation_target(habitat, aggregate)
+        self.validate_invariants(habitat)
         return aggregate
 
     def add_alpha_to_aggregate(self, habitat, aggregate: AlphaAggregate, alpha: AlphaSynuclein) -> bool:
@@ -128,6 +193,7 @@ class AggregateRegistry:
                 owner=habitat,
                 compartment=getattr(alpha, "compartment", None)
             )
+        self.validate_invariants(habitat)
         return True
 
     def merge_aggregates(self, habitat, target: AlphaAggregate, source: AlphaAggregate) -> bool:
@@ -162,10 +228,18 @@ class AggregateRegistry:
                 owner=habitat,
                 outcome="merged"
             )
+        self.validate_invariants(habitat)
         return True
 
-    def mature_to_lewy_body(self, aggregate: AlphaAggregate):
-        """Promote an oligomer and every member protein to LewyBody."""
+    def mature_to_lewy_body(self, aggregate_or_id) -> bool:
+        """Promote an aggregate and every tracked member protein to LewyBody.
+        Accepts either an AlphaAggregate object or its registry id. Keeping the
+        member transition here makes Lewy body formation a registry-level
+        collective event instead of an individual protein decision.
+        """
+        aggregate = self._resolve_aggregate(aggregate_or_id)
+        if aggregate is None:
+            return False
         old_state = aggregate.state
         aggregate.mature_to_lewy_body()
         self._set_members_state(aggregate, AlphaSynucleinState.LEWY_BODY)
@@ -180,14 +254,20 @@ class AggregateRegistry:
                 owner=aggregate.owner_neuron,
                 compartment="Intracellular"
             )
+            logger.aggregate_snapshot(aggregate, aggregate.aggregate_id, owner=aggregate.owner_neuron)
+        if aggregate.owner_neuron is not None:
+            self.validate_invariants(aggregate.owner_neuron)
+        return True
 
-    def remove(self, agent: AdaptiveAgent):
+    def remove(self, agent: AdaptiveAgent, habitat=None):
         """Remove aggregate bookkeeping for a cleared aggregate or member."""
         if isinstance(agent, AlphaAggregate):
             self._remove_aggregate(agent)
+            if habitat is not None:
+                self.validate_invariants(habitat)
             return
         if isinstance(agent, AlphaSynuclein) and agent.aggregate_id is not None:
-            self._remove_member(agent)
+            self._remove_member(agent, habitat)
 
     def unregister_aggregate_for_transfer(self, aggregate: AlphaAggregate) -> set[AlphaSynuclein]:
         """Unregister an aggregate for extracellular transfer without clearing it."""
@@ -213,6 +293,7 @@ class AggregateRegistry:
         aggregate.owner_neuron = habitat
         aggregate.causal_logger = getattr(habitat, "causal_logger", None)
         self._register_degradation_target(habitat, aggregate)
+        self.validate_invariants(habitat)
 
     def new_id(self) -> int:
         """Return a fresh registry-local aggregate id."""
@@ -290,6 +371,12 @@ class AggregateRegistry:
         """Choose the largest aggregate as merge target."""
         return max(aggregates, key=lambda aggregate: aggregate.size)
 
+    def _resolve_aggregate(self, aggregate_or_id) -> Optional[AlphaAggregate]:
+        """Resolve either an aggregate object or a registry id."""
+        if isinstance(aggregate_or_id, AlphaAggregate):
+            return self._aggregates.get(aggregate_or_id.aggregate_id)
+        return self._aggregates.get(aggregate_or_id)
+
     def _set_members_state(self, aggregate: AlphaAggregate, state: AlphaSynucleinState):
         """Mirror aggregate state into every tracked member protein."""
         for member in self._members.get(aggregate.aggregate_id, set()):
@@ -301,8 +388,10 @@ class AggregateRegistry:
         for member in members:
             member.mark_cleared()
         self._aggregates.pop(aggregate.aggregate_id, None)
+        aggregate.member_ids.clear()
+        aggregate.member_agents.clear()
 
-    def _remove_member(self, alpha: AlphaSynuclein):
+    def _remove_member(self, alpha: AlphaSynuclein, habitat=None):
         """Remove one protein from aggregate bookkeeping."""
         aggregate_id = alpha.aggregate_id
         if aggregate_id is None:
@@ -313,7 +402,26 @@ class AggregateRegistry:
         aggregate = self._aggregates.get(aggregate_id)
         if aggregate is not None:
             aggregate.member_ids.discard(self._member_id(alpha))
+            aggregate.member_agents.discard(alpha)
         alpha.aggregate_id = None
+        if alpha.state != AlphaSynucleinState.CLEARED:
+            alpha.mark_cleared()
+        if aggregate is None:
+            return
+        remaining = self._members.get(aggregate_id, set())
+        if not remaining:
+            if habitat is not None and aggregate in habitat.grid.agent_registry:
+                habitat.grid.remove_agent(aggregate)
+                self._untrack_degradation_target(habitat, aggregate)
+            self._aggregates.pop(aggregate_id, None)
+            self._members.pop(aggregate_id, None)
+            aggregate.member_ids.clear()
+            aggregate.member_agents.clear()
+            return
+        if aggregate.state == AggregateState.LEWY_BODY:
+            self._set_members_state(aggregate, AlphaSynucleinState.LEWY_BODY)
+        if habitat is not None:
+            self.validate_invariants(habitat)
 
     def _member_id(self, alpha: AlphaSynuclein):
         """Return a stable member identifier for aggregate membership."""

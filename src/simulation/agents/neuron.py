@@ -75,6 +75,8 @@ class NeuronConfig:
     alpha_absorption_rate: float
     alpha_release_amount: float
     max_damage_increment_per_tick: float = 1.0
+    compromised_dopamine_release_fraction: float = 0.6
+    alpha_release_dopamine_fraction: float = 0.35
 
 @dataclass
 class NeuronInternalConfig:
@@ -110,7 +112,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
     The neuron owns a local grid where organelles, alpha-synuclein proteins,
     aggregates and lysosomes interact. It also exposes small buffer APIs used
     by intracellular agents to coordinate deferred work, such as lysosomal
-    degradation targets and aggregate bookkeeping.
+    degradation targets. Aggregate identity and membership are delegated to the
+    environment-level AggregateRegistry.
     """
 
     def __init__(
@@ -121,6 +124,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         config: NeuronConfig,
         alpha_type_id:int,
         internal_config: Optional[NeuronInternalConfig] = None,
+        environment=None,
     ):
         super().__init__(local_id, type_id, rank)
         # Adaptive agent fields
@@ -130,6 +134,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.last_perception: Optional[NeuronPerception] = None
         self.pending_action: Optional[NeuronAction] = None
         self.rng = RNG
+        self.environment = environment
+        self._fallback_aggregate_registry: Optional[AggregateRegistry] = None
 
         # Cumulative value for cell damage
         self.cell_damage: float = 0.0
@@ -149,12 +155,34 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         # lysosomes claim one unassigned target at a time.
         self.degradation_targets: list[AdaptiveAgent] = []
         self.degradation_assignment: dict[AdaptiveAgent, AdaptiveAgent] = {}
-        self.aggregate_registry = AggregateRegistry()
+
+    @property
+    def aggregate_registry(self) -> AggregateRegistry:
+        """Return the environment-level aggregate registry visible to this neuron.
+
+        Runtime neurons are bound to SubstantiaNigra, which owns the shared
+        registry for the rank. A lazy fallback is kept for isolated unit tests
+        that instantiate a neuron without an environment.
+        """
+
+        registry = getattr(getattr(self, "environment", None), "aggregate_registry", None)
+        if registry is not None:
+            return registry
+        if self._fallback_aggregate_registry is None:
+            self._fallback_aggregate_registry = AggregateRegistry()
+        return self._fallback_aggregate_registry
+
+    def bind_environment(self, environment):
+        """Expose the shared extracellular environment to this neuron."""
+
+        self.environment = environment
+        return self
 
     def see(self, model) -> NeuronPerception:
         """Build the neuron perception from external and internal signals."""
         bind_causal_logger(self, model)
         env = model.environment
+        self.bind_environment(env)
         position = env.position_of(self)
         if position is None:
             nearby_alpha = 0.0
@@ -265,6 +293,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
                 self.pending_action = NeuronAction.STRESS
             else:
                 self.pending_action = NeuronAction.R_DOPAMINE
+        elif self.state == NeuronState.COMPROMISED:
+            self.pending_action = NeuronAction.R_DOPAMINE
         else:
             self.pending_action = NeuronAction.STRESS
         logger = causal_logger_from(self)
@@ -278,14 +308,14 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             return
         env = model.environment
         if self.pending_action == NeuronAction.R_DOPAMINE:
-            env.release_dopamine(self.cfg.dopamine_release_rate)
+            dopamine = self._release_dopamine(env)
             logger = causal_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "dopamine_output",
-                    self.cfg.dopamine_release_rate,
+                    dopamine,
                     "positive",
                     "neuron_dopamine_release"
                 )
@@ -321,6 +351,20 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.absorb_alpha(model)
         elif self.pending_action == NeuronAction.R_ALPHASYNUCLEIN:
             self.release_alpha(model)
+            dopamine = self._release_dopamine(
+                env,
+                self.cfg.alpha_release_dopamine_fraction
+            )
+            logger = causal_logger_from(self)
+            if logger is not None and dopamine > 0.0:
+                logger.field_effect(
+                    self,
+                    self.pending_action,
+                    "dopamine_output",
+                    dopamine,
+                    "positive",
+                    "neuron_residual_dopamine_during_alpha_release"
+                )
         elif self.pending_action == NeuronAction.IDLE:
             return
 
@@ -328,6 +372,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         """Run one intracellular phase pass followed by the neuron macro step."""
 
         bind_causal_logger(self, model)
+        self.bind_environment(model.environment)
         if self.state == NeuronState.RUPTURED:
             self.begin_tick()
             self.see(model)
@@ -388,6 +433,21 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
         return clamp(perception.inflammatory_levels * self.cfg.inflammation_damage_weight + perception.extracellular_debris * self.cfg.debris_damage_weight + perception.nearby_alpha * self.cfg.alpha_damage_weight)
 
+    def _dopamine_release_amount(self) -> float:
+        """Return dopamine released by the current neuronal state."""
+        if self.state == NeuronState.HEALTHY:
+            return self.cfg.dopamine_release_rate
+        if self.state == NeuronState.COMPROMISED:
+            return self.cfg.dopamine_release_rate * self.cfg.compromised_dopamine_release_fraction
+        return 0.0
+
+    def _release_dopamine(self, env, fraction: float = 1.0) -> float:
+        """Release state-scaled dopamine and return the emitted amount."""
+        dopamine = self._dopamine_release_amount() * clamp(fraction)
+        if dopamine > 0.0:
+            env.release_dopamine(dopamine)
+        return dopamine
+
     def _dump_debris_payload(self) -> float:
         """Return debris released by a ruptured neuron in this action.
 
@@ -438,6 +498,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         """
 
         env = model.environment
+        self.bind_environment(env)
         position = env.position_of(self)
         if position is None:
             return None
@@ -466,6 +527,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         """
 
         env = model.environment
+        self.bind_environment(env)
         release_point = env.position_of(self)
         if release_point is None:
             return []
@@ -533,7 +595,8 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.clear_degradation_assignment(agent)
         self.clear_assignments_for_target(agent)
         if isinstance(agent, AlphaAggregate):
-            members = self.aggregate_registry.unregister_aggregate_for_transfer(agent)
+            members = self.aggregate_registry.members(agent.aggregate_id)
+            agent.member_agents.update(members)
             for member in members:
                 member.release_to_environment()
         self.grid.remove_agent(agent)

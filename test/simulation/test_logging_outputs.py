@@ -39,6 +39,19 @@ class TestCausalTraceLogger:
         assert "position" not in edge
         assert metadata["logger_schema_version"] == "2.0-json"
 
+    def test_aggregate_snapshot_uses_owner_and_aggregate_identity(self, tmp_path):
+        logger = CausalTraceLogger(run_id="test_run", rank=0, output_dir=tmp_path, enabled=True)
+        owner = SimpleNamespace(uid=(10, 0, 0))
+        aggregate = SimpleNamespace(uid=(1, 3, 0), aggregate_id=1, state="LewyBody", size=4)
+
+        logger.aggregate_snapshot(aggregate, aggregate_id=1, owner=owner)
+        logger.close()
+
+        node = json.loads((tmp_path / "g0_nodes.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        assert node["uid"] == "10:0:0::Aggregate_1"
+        assert node["owner_uid"] == "10:0:0"
+        assert node["value"] == 4
+
 
 class TestInitializationLogger:
     def test_writes_full_initial_agent_record_and_manifest(self, tmp_path):

@@ -33,7 +33,8 @@ class ConfigFactory:
             debris_effect_scale=_number_or(effects, "debris_effect_scale", 1.0),
             inflammation_added_max_delta=_optional_number(effects, "inflammation_added_max_delta"),
             inflammation_removed_max_delta=_optional_number(effects, "inflammation_removed_max_delta"),
-            inflammation_effect_scale=_number_or(effects, "inflammation_effect_scale", 1.0)
+            inflammation_effect_scale=_number_or(effects, "inflammation_effect_scale", 1.0),
+            baseline_debris_input=_number_or(effects, "baseline_debris_input", 0.0)
         )
 
     @staticmethod
@@ -118,6 +119,16 @@ class ConfigFactory:
                 damage,
                 "max_damage_increment_per_tick",
                 1.0
+            ),
+            compromised_dopamine_release_fraction=_number_or(
+                rates,
+                "compromised_dopamine_release_fraction",
+                0.6
+            ),
+            alpha_release_dopamine_fraction=_number_or(
+                alpha,
+                "alpha_release_dopamine_fraction",
+                0.35
             )
         )
 

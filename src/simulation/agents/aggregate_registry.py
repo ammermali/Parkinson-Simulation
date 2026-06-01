@@ -6,8 +6,17 @@ from src.simulation.agents.alphasynuclein import AlphaSynuclein, AlphaSynucleinS
 from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import causal_logger_from
 
+class AggregateInvariantError(RuntimeError):
+    """Aggregate registry consistency error."""
+
 class AggregateRegistry:
     """Centralization of Alpha-Synuclein lifecycle.
+
+    In full simulations the registry is owned by the SubstantiaNigra
+    environment and exposed to neurons as a shared rank-local service. Habitat
+    arguments still scope processing and validation to one neuronal grid, while
+    aggregate identity and membership persist across release and absorption.
+
     AlphaSynuclein agents only decide whether they want to oligomerize. This
     registry resolves the collective spatial event, like aggregating agents,
     absorbing free misfolded proteins, merging aggregates and maturing oligomers
@@ -40,9 +49,22 @@ class AggregateRegistry:
         self.prune_cleared_aggregates(habitat)
         self.validate_invariants(habitat)
 
-    def aggregates(self) -> list[AlphaAggregate]:
-        """Return aggregate agents currently owned by this registry."""
-        return list(self._aggregates.values())
+    def aggregates(self, habitat=None) -> list[AlphaAggregate]:
+        """Return aggregate agents currently owned by this registry.
+
+        When habitat is provided, only aggregates currently located in that
+        habitat are returned. This keeps one environment-level registry usable
+        by many neurons without making per-neuron summaries double-count every
+        aggregate in the shared registry.
+        """
+
+        if habitat is None:
+            return list(self._aggregates.values())
+        return [
+            aggregate
+            for aggregate in self._aggregates.values()
+            if aggregate.owner_neuron is habitat
+        ]
 
     def aggregate_for(self, aggregate_id: int) -> Optional[AlphaAggregate]:
         """Look up an aggregate by its biological aggregate id."""
@@ -64,30 +86,32 @@ class AggregateRegistry:
         lewy_aggregate_count = 0
         lewy_member_count = 0
         for aggregate_id, aggregate in self._aggregates.items():
+            if habitat is not None and aggregate.owner_neuron is not habitat:
+                continue
             members = self._members.get(aggregate_id, set())
             if aggregate.size == 0 or not members:
-                raise RuntimeError()
+                raise AggregateInvariantError(f"Aggregate {self.aggregate_identity(aggregate)} has no members.")
             if aggregate.member_ids != {self._member_id(member) for member in members}:
-                raise RuntimeError()
+                raise AggregateInvariantError(f"Aggregate {self.aggregate_identity(aggregate)} member ids are out of sync.")
             if habitat is not None and aggregate not in habitat.grid.agent_registry:
-                raise RuntimeError()
+                raise AggregateInvariantError(f"Aggregate {self.aggregate_identity(aggregate)} is registered but missing from the habitat grid.")
             aggregate_lewy_members = 0
             for member in members:
                 if member.aggregate_id != aggregate_id:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"Member {self._member_id(member)} points to aggregate {member.aggregate_id}, expected {aggregate_id}.")
                 if member.state == AlphaSynucleinState.CLEARED:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"Cleared member {self._member_id(member)} is still tracked by aggregate {self.aggregate_identity(aggregate)}.")
                 if habitat is not None and member in habitat.grid.agent_registry:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"Member {self._member_id(member)} is tracked by aggregate {self.aggregate_identity(aggregate)} but still active on the grid.")
                 if member.state == AlphaSynucleinState.LEWY_BODY:
                     lewy_member_count += 1
                     aggregate_lewy_members += 1
             if aggregate.state == AggregateState.LEWY_BODY:
                 lewy_aggregate_count += 1
                 if aggregate_lewy_members == 0:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"Lewy body aggregate {self.aggregate_identity(aggregate)} has no LewyBody members.")
                 if aggregate_lewy_members != len(members):
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"Lewy body aggregate {self.aggregate_identity(aggregate)} has non-LewyBody members.")
         tracked_member_ids = {
             id(member)
             for members in self._members.values()
@@ -96,23 +120,34 @@ class AggregateRegistry:
         for members in self._members.values():
             for member in members:
                 if member.aggregate_id not in self._aggregates:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"Member {self._member_id(member)} points to missing aggregate {member.aggregate_id}.")
         if lewy_member_count < lewy_aggregate_count:
-            raise RuntimeError()
+            raise AggregateInvariantError("LewyBody member count is smaller than LewyBody aggregate count.")
         for aggregate in self._aggregates.values():
             for member in aggregate.member_agents:
                 if member.state == AlphaSynucleinState.LEWY_BODY and id(member) not in tracked_member_ids:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"LewyBody member {self._member_id(member)} is present on aggregate {self.aggregate_identity(aggregate)} but not tracked by the registry.")
         if habitat is not None:
             for agent in habitat.grid.agent_registry:
+                if isinstance(agent, AlphaAggregate):
+                    if agent.aggregate_id in self._aggregates and agent.owner_neuron is not habitat:
+                        raise AggregateInvariantError(f"Aggregate {self.aggregate_identity(agent)} is active in a habitat it does not own.")
+                    continue
                 if not isinstance(agent, AlphaSynuclein):
                     continue
                 if agent.state == AlphaSynucleinState.LEWY_BODY and agent.aggregate_id not in self._aggregates:
-                    raise RuntimeError()
+                    raise AggregateInvariantError(f"LewyBody alpha {self._member_id(agent)} is not attached to a registered aggregate.")
+
+    def aggregate_identity(self, aggregate: AlphaAggregate) -> tuple[str, int]:
+        """Return the analysis identity for an aggregate."""
+        owner_uid = self._owner_uid(aggregate.owner_neuron)
+        return owner_uid, aggregate.aggregate_id
 
     def prune_cleared_aggregates(self, habitat=None):
         """Remove aggregates whose tracked proteins have all been cleared."""
         for aggregate_id, aggregate in list(self._aggregates.items()):
+            if habitat is not None and aggregate.owner_neuron is not habitat:
+                continue
             members = self._members.get(aggregate_id, set())
             if members and not all(member.state == AlphaSynucleinState.CLEARED for member in members):
                 continue
@@ -217,6 +252,9 @@ class AggregateRegistry:
         habitat.grid.remove_agent(source)
         del self._aggregates[source.aggregate_id]
         del self._members[source.aggregate_id]
+        source.member_ids.clear()
+        source.member_agents.clear()
+        source.owner_neuron = None
         self._register_degradation_target(habitat, target)
         logger = causal_logger_from(habitat)
         if logger is not None:
@@ -429,6 +467,20 @@ class AggregateRegistry:
             return alpha.uid
         except AttributeError:
             return id(alpha)
+
+    def _owner_uid(self, owner) -> str:
+        """Return a stable owner uid for aggregate identity."""
+        if owner is None:
+            return "None"
+        uid = getattr(owner, "uid", None)
+        if uid is not None:
+            if isinstance(uid, tuple):
+                return ":".join(str(item) for item in uid)
+            return str(uid)
+        local_id = getattr(owner, "local_id", getattr(owner, "id", ""))
+        ptype = getattr(owner, "ptype", getattr(owner, "type_id", ""))
+        rank = getattr(owner, "rank", "")
+        return f"{local_id}:{ptype}:{rank}"
 
     def _agent_rank(self, agent: AdaptiveAgent) -> int:
         """Read rank without assuming repast4py exposes it as an attribute."""

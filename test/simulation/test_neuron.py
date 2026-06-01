@@ -16,6 +16,8 @@ AdaptiveAgent = neuron_module.AdaptiveAgent
 aggregate_module = import_any("src.simulation.agents.aggregate")
 AlphaAggregate = aggregate_module.AlphaAggregate
 AggregateState = aggregate_module.AggregateState
+registry_module = import_any("src.simulation.agents.aggregate_registry")
+AggregateRegistry = registry_module.AggregateRegistry
 
 
 def make_config() -> NeuronConfig:
@@ -103,6 +105,15 @@ def make_perception(
 
 
 class TestNeuron:
+    def test_aggregate_registry_is_read_from_bound_environment(self):
+        neuron = make_neuron()
+        registry = AggregateRegistry()
+        environment = SimpleNamespace(aggregate_registry=registry)
+
+        neuron.bind_environment(environment)
+
+        assert neuron.aggregate_registry is registry
+
     def test_initializes_as_healthy_macro_agent_with_internal_grid(self):
         neuron = make_neuron()
         assert neuron.state == NeuronState.HEALTHY
@@ -255,6 +266,13 @@ class TestNeuron:
         neuron.action()
         assert neuron.pending_action == NeuronAction.R_DOPAMINE
 
+    def test_action_compromised_neuron_keeps_partial_dopamine_release(self):
+        neuron = make_neuron()
+        neuron.state = NeuronState.COMPROMISED
+        neuron.last_perception = make_perception(inflammation=0.1, debris=0.1, nearby_alpha=0.0)
+        neuron.action()
+        assert neuron.pending_action == NeuronAction.R_DOPAMINE
+
     def test_do_release_dopamine_updates_environment(self):
         neuron = make_neuron()
         environment = TestSubstantiaNigraLikeEnvironment()
@@ -262,6 +280,43 @@ class TestNeuron:
         neuron.pending_action = NeuronAction.R_DOPAMINE
         neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
         assert environment.released_dopamine == pytest.approx(0.20)
+
+    def test_do_release_dopamine_is_reduced_when_compromised(self):
+        neuron = make_neuron()
+        environment = TestSubstantiaNigraLikeEnvironment()
+        neuron.state = NeuronState.COMPROMISED
+        neuron.last_perception = make_perception()
+        neuron.pending_action = NeuronAction.R_DOPAMINE
+        neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
+        assert environment.released_dopamine == pytest.approx(0.20 * 0.6)
+
+    def test_do_release_alpha_keeps_residual_dopamine_for_functional_neuron(self):
+        class ReleaseEnvironment:
+            def __init__(self):
+                self.released_dopamine = 0.0
+                self.added_agents = []
+
+            def position_of(self, agent):
+                return DiscretePoint(2, 2)
+
+            def add_agent(self, agent, point):
+                self.added_agents.append((agent, point))
+
+            def release_dopamine(self, amount):
+                self.released_dopamine += amount
+
+        neuron = make_neuron()
+        aggregate = make_aggregate(1)
+        neuron.add_agent(aggregate, DiscretePoint(0, 0))
+        environment = ReleaseEnvironment()
+        neuron.state = NeuronState.HEALTHY
+        neuron.last_perception = make_perception(alpha_load=0.5)
+        neuron.pending_action = NeuronAction.R_ALPHASYNUCLEIN
+
+        neuron.do(SimpleNamespace(environment=environment, rng=TestRng()))
+
+        assert environment.added_agents == [(aggregate, DiscretePoint(2, 2))]
+        assert environment.released_dopamine == pytest.approx(0.20 * 0.35)
 
     def test_do_signal_stress_adds_inflammation(self):
         neuron = make_neuron()

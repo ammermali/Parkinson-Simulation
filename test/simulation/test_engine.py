@@ -466,6 +466,279 @@ class TestParkinsonModel:
         assert model.causal_logger.output_dir == tmp_path
         assert model.initialization_logger.output_dir == tmp_path
 
+    def test_progress_stdout_reports_start_and_configured_tick_interval(self, engine_module, capsys):
+        params = {
+            "stop.at": 3,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "logging": {
+                "enabled": False,
+                "scalar_stdout": False,
+                "progress_stdout": True,
+                "progress_interval": 2,
+            }}
+        model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+
+        startup = capsys.readouterr().out
+        assert "[progress] starting run" in startup
+        model.step()
+        assert capsys.readouterr().out == ""
+        model.step()
+
+        progress = capsys.readouterr().out
+        assert "[progress] tick 2/3" in progress
+
+    def test_step_finalizes_and_stops_at_configured_tick(self, engine_module, capsys):
+        params = {
+            "stop.at": 1,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "logging": {
+                "enabled": False,
+                "scalar_stdout": False,
+                "progress_stdout": True,
+                "progress_interval": 1,
+                "summary_stdout": True,
+            }}
+        model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+
+        capsys.readouterr()
+        with pytest.raises(engine_module.SimulationCompleted):
+            model.step()
+        output = capsys.readouterr().out
+
+        assert "[progress] tick 1/1" in output
+        assert "[progress] completed at tick 1" in output
+        assert "[summary] neurons=" in output
+        assert model._finalized is True
+
+    def test_non_root_rank_joins_summary_metric_collectives_without_printing(self, engine_module, capsys):
+        class TestComm:
+            def __init__(self):
+                self.calls = 0
+
+            def allreduce(self, value, op=None):
+                self.calls += 1
+                return value
+
+        class TestContext:
+            def agents(self):
+                return []
+
+        comm = TestComm()
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.rank = 1
+        model.comm = comm
+        model.params = {
+            "logging": {
+                "progress_stdout": True,
+                "summary_stdout": True,
+            }}
+        model.context = TestContext()
+        model.environment = types.SimpleNamespace(
+            scalars=types.SimpleNamespace(
+                extracellular_debris=0.0,
+                inflammation_level=0.0,
+                dopamine_output=0.0,
+            )
+        )
+
+        model._log_completion()
+
+        assert capsys.readouterr().out == ""
+        assert comm.calls > 0
+
+    def test_final_metrics_count_extracellular_alpha_and_aggregates(self, engine_module):
+        alpha_module = importlib.import_module("src.simulation.agents.alphasynuclein")
+        alpha_config = alpha_module.AlphaSynucleinConfig(
+            perception_radius=1,
+            move_radius=1,
+            move_probability=0.0,
+            oxidative_stress_high_threshold=1.0,
+        )
+        free_alpha = engine_module.AlphaSynuclein(
+            local_id=1,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            config=alpha_config,
+            compartment=engine_module.AlphaSynucleinCompartment.EXTRACELLULAR,
+            owner_neuron=None,
+        )
+        misfolded_member = engine_module.AlphaSynuclein(
+            local_id=2,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            config=alpha_config,
+            compartment=engine_module.AlphaSynucleinCompartment.EXTRACELLULAR,
+            owner_neuron=None,
+        )
+        misfolded_member.join_aggregate(77, engine_module.AlphaSynucleinState.LEWY_BODY)
+        aggregate = engine_module.AlphaAggregate(
+            local_id=3,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            aggregate_id=77,
+            member_ids={misfolded_member.uid},
+            state=engine_module.AggregateState.LEWY_BODY,
+            member_agents={misfolded_member},
+        )
+
+        class TestContext:
+            def agents(self):
+                return []
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.context = TestContext()
+        model.environment = types.SimpleNamespace(
+            grid=types.SimpleNamespace(agent_registry=[free_alpha, aggregate]),
+            aggregate_registry=types.SimpleNamespace(
+                aggregate_for=lambda aggregate_id: aggregate if aggregate_id == aggregate.aggregate_id else None,
+                members=lambda aggregate_id: {misfolded_member} if aggregate_id == aggregate.aggregate_id else set(),
+            ),
+        )
+
+        metrics = model._local_final_metrics()
+
+        assert metrics["alpha.free.Monomer"] == 1
+        assert metrics["alpha.extracellular.free.total"] == 1
+        assert metrics["alpha.extracellular.members"] == 1
+        assert metrics["alpha.members.LewyBody"] == 1
+        assert metrics["aggregates.total"] == 1
+        assert metrics["aggregates.extracellular.total"] == 1
+        assert metrics["aggregates.extracellular.LewyBody"] == 1
+        assert metrics["aggregates.extracellular.invariant_failures"] == 0
+
+    def test_final_metrics_reduce_fixed_metric_schema(self, engine_module):
+        class TestComm:
+            def __init__(self):
+                self.values = []
+
+            def allreduce(self, value, op=None):
+                self.values.append(value)
+                return value
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.comm = TestComm()
+        model._local_final_metrics = lambda: {
+            "neurons.Healthy": 2,
+            "alpha.free.DynamicBadState": 99,
+            "aggregates.max_size": 3,
+        }
+
+        metrics = model._final_metrics()
+
+        expected_calls = len(engine_module.FINAL_SUM_METRIC_KEYS) + len(engine_module.FINAL_MAX_METRIC_KEYS)
+        assert len(model.comm.values) == expected_calls
+        assert metrics["neurons.Healthy"] == 2
+        assert "alpha.free.DynamicBadState" not in metrics
+
+    def test_local_metrics_route_unexpected_states_to_unknown(self, engine_module):
+        alpha_module = importlib.import_module("src.simulation.agents.alphasynuclein")
+        alpha_config = alpha_module.AlphaSynucleinConfig(
+            perception_radius=1,
+            move_radius=1,
+            move_probability=0.0,
+            oxidative_stress_high_threshold=1.0,
+        )
+        alpha = engine_module.AlphaSynuclein(
+            local_id=1,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            config=alpha_config,
+            compartment=engine_module.AlphaSynucleinCompartment.EXTRACELLULAR,
+            owner_neuron=None,
+        )
+        alpha.state = "Unexpected"
+
+        class TestContext:
+            def agents(self):
+                return []
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.context = TestContext()
+        model.environment = types.SimpleNamespace(
+            grid=types.SimpleNamespace(agent_registry=[alpha])
+        )
+
+        metrics = model._local_final_metrics()
+
+        assert metrics["alpha.free.Unknown"] == 1
+        assert "alpha.free.Unexpected" not in metrics
+
+    def test_extracellular_aggregate_invariant_failures_are_counted_separately(self, engine_module):
+        broken_aggregate = engine_module.AlphaAggregate(
+            local_id=3,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            aggregate_id=77,
+            member_ids=set(),
+            state=engine_module.AggregateState.LEWY_BODY,
+            member_agents=set(),
+        )
+
+        class TestContext:
+            def agents(self):
+                return []
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.context = TestContext()
+        model.environment = types.SimpleNamespace(
+            grid=types.SimpleNamespace(agent_registry=[broken_aggregate])
+        )
+
+        metrics = model._local_final_metrics()
+
+        assert metrics["aggregates.invariant_failures"] == 1
+        assert metrics["aggregates.intracellular.invariant_failures"] == 0
+        assert metrics["aggregates.extracellular.invariant_failures"] == 1
+
+    def test_extracellular_aggregate_missing_from_environment_registry_is_invariant_failure(self, engine_module):
+        alpha_module = importlib.import_module("src.simulation.agents.alphasynuclein")
+        alpha_config = alpha_module.AlphaSynucleinConfig(
+            perception_radius=1,
+            move_radius=1,
+            move_probability=0.0,
+            oxidative_stress_high_threshold=1.0,
+        )
+        member = engine_module.AlphaSynuclein(
+            local_id=2,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            config=alpha_config,
+            compartment=engine_module.AlphaSynucleinCompartment.EXTRACELLULAR,
+            owner_neuron=None,
+        )
+        member.join_aggregate(77, engine_module.AlphaSynucleinState.LEWY_BODY)
+        aggregate = engine_module.AlphaAggregate(
+            local_id=3,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            aggregate_id=77,
+            member_ids={member.uid},
+            state=engine_module.AggregateState.LEWY_BODY,
+            member_agents={member},
+        )
+
+        class TestContext:
+            def agents(self):
+                return []
+
+        model = object.__new__(engine_module.ParkinsonModel)
+        model.context = TestContext()
+        model.environment = types.SimpleNamespace(
+            grid=types.SimpleNamespace(agent_registry=[aggregate]),
+            aggregate_registry=types.SimpleNamespace(
+                aggregate_for=lambda aggregate_id: None,
+                members=lambda aggregate_id: set(),
+            ),
+        )
+
+        metrics = model._local_final_metrics()
+
+        assert metrics["aggregates.extracellular.invariant_failures"] == 1
+
     def test_step_records_g0_field_nodes_when_causal_logging_is_enabled(self, engine_module, tmp_path):
         params = {
             "stop.at": 2,

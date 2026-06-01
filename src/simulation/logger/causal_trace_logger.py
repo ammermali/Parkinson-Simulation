@@ -280,19 +280,21 @@ class CausalTraceLogger:
     def aggregate_snapshot(self, aggregate_agent, aggregate_id: Optional[int] = None, owner=None, phase: str = "4_effect_buffer") -> CausalNode:
         """Aggregate node."""
         resolved_id = aggregate_id or getattr(aggregate_agent, "aggregate_id", "")
+        owner_uid = uid_of(owner)
+        aggregate_identity = f"{owner_uid or 'None'}::Aggregate_{resolved_id}"
         state = getattr(aggregate_agent, "state", None)
         state_value = value_of(state) or "unknown"
         return self.node(
             "aggregate",
             phase,
-            uid=uid_of(aggregate_agent),
+            uid=aggregate_identity,
             agent_type=type_name(aggregate_agent),
             state=state,
             value=getattr(aggregate_agent, "size", None),
             level="intracellular",
-            owner_uid=uid_of(owner),
+            owner_uid=owner_uid,
             compartment="Intracellular",
-            label=f"Aggregate_{resolved_id}.{state_value}"
+            label=f"{aggregate_identity}.{state_value}"
         )
 
     def degradation(self, lysosome, target_agent, mechanism: str, outcome: str, probability: Optional[float] = None, rng_value: Optional[float] = None, owner=None) -> None:

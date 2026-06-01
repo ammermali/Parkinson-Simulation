@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from math import exp
 from typing import Optional
+from src.simulation.agents.aggregate_registry import AggregateRegistry
 from src.simulation.utils import clamp, GridHabitatMixin, LocalGrid
 
 
@@ -20,6 +21,7 @@ class SNEnvironmentConfig:
     inflammation_added_max_delta: Optional[float] = None
     inflammation_removed_max_delta: Optional[float] = None
     inflammation_effect_scale: float = 1.0
+    baseline_debris_input: float = 0.0
 
 
 @dataclass
@@ -42,10 +44,11 @@ class SNEffects:
 
 
 class SubstantiaNigra(GridHabitatMixin):
-    """Shared extracellular habitat and scalar buffer for the simulation."""
-    def __init__(self, grid, config: SNEnvironmentConfig):
+    """Shared extracellular habitat, scalar buffer and aggregate registry."""
+    def __init__(self, grid, config: SNEnvironmentConfig, aggregate_registry: Optional[AggregateRegistry] = None):
         self.grid = LocalGrid(repast_grid=grid)
         self.config = config
+        self.aggregate_registry = aggregate_registry or AggregateRegistry()
         self.scalars = SNScalars(
             extracellular_debris=config.initial_debris,
             inflammation_level=config.initial_inflammation,
@@ -89,7 +92,7 @@ class SubstantiaNigra(GridHabitatMixin):
             cfg.inflammation_effect_scale
         )
 
-        new_debris = (old.extracellular_debris + debris_added - debris_removed - cfg.debris_decay * old.extracellular_debris)
+        new_debris = (old.extracellular_debris + cfg.baseline_debris_input + debris_added - debris_removed - cfg.debris_decay * old.extracellular_debris)
         new_inflammation = (old.inflammation_level + inflammation_added - inflammation_removed - cfg.inflammation_decay * old.inflammation_level)
 
         if max_possible_dopamine > 0:
@@ -106,7 +109,7 @@ class SubstantiaNigra(GridHabitatMixin):
         self.scalars.inflammation_level = clamp(new_inflammation)
         self.scalars.dopamine_output = clamp(new_dopamine)
         self.last_committed_effects = SNEffects(
-            debris_added=debris_added,
+            debris_added=debris_added + cfg.baseline_debris_input,
             debris_removed=debris_removed,
             inflammation_added=inflammation_added,
             inflammation_removed=inflammation_removed,

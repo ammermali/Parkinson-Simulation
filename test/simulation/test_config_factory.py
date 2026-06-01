@@ -113,6 +113,48 @@ dynamics:
     assert low.inflammation_low_threshold == 0.0
 
 
+def test_neuron_config_reads_compromised_dopamine_fraction(tmp_path: Path):
+    path = tmp_path / "neuron.yaml"
+    path.write_text(
+        """
+perception:
+  per_radius: 1
+thresholds:
+  nearby_alpha_high_threshold: {mean: 0.5, std: 0.0}
+  inflammation_high_threshold: {mean: 0.7, std: 0.0}
+  debris_high_threshold: {mean: 0.6, std: 0.0}
+  alpha_load_release_threshold: {mean: 0.08, std: 0.0}
+  low_stress_threshold: {mean: 0.12, std: 0.0}
+  compromised_threshold: 0.28
+  apoptotic_threshold: 0.7
+  ruptured_threshold: 0.97
+damage:
+  damage_accumulation_rate: 0.25
+  damage_recovery_rate: 0.02
+  max_damage_increment_per_tick: 0.08
+  inflammation_damage_weight: 0.35
+  debris_damage_weight: 0.3
+  alpha_damage_weight: 0.35
+rates:
+  dopamine_release_rate: 0.18
+  compromised_dopamine_release_fraction: 0.33
+  stress_inflammation_release_rate: 0.04
+  debris_release_rate: 0.1
+alpha:
+  alpha_absorption_rate: 0.1
+  alpha_release_amount: 0.05
+  alpha_release_dopamine_fraction: 0.44
+""",
+        encoding="utf-8",
+    )
+
+    config = factory.build_neuron_config(Params(str(path)), rng=TestRng(random_value=0.0))
+
+    assert config.dopamine_release_rate == pytest.approx(0.18)
+    assert config.compromised_dopamine_release_fraction == pytest.approx(0.33)
+    assert config.alpha_release_dopamine_fraction == pytest.approx(0.44)
+
+
 def test_alpha_config_reads_non_random_misfolding_rates(tmp_path: Path):
     path = tmp_path / "alpha.yaml"
     path.write_text(
@@ -161,6 +203,7 @@ decay:
 dopamine:
   smoothing: 0.5
 effects:
+  baseline_debris_input: 0.03
   debris_added_max_delta: 0.11
   debris_removed_max_delta: 0.12
   debris_effect_scale: 0.8
@@ -175,6 +218,7 @@ effects:
 
     assert config.debris_added_max_delta == pytest.approx(0.11)
     assert config.debris_removed_max_delta == pytest.approx(0.12)
+    assert config.baseline_debris_input == pytest.approx(0.03)
     assert config.debris_effect_scale == pytest.approx(0.8)
     assert config.inflammation_added_max_delta == pytest.approx(0.13)
     assert config.inflammation_removed_max_delta == pytest.approx(0.14)

@@ -13,6 +13,8 @@ AlphaSynucleinState = alpha_module.AlphaSynucleinState
 aggregate_module = import_any("src.simulation.agents.aggregate")
 AlphaAggregate = aggregate_module.AlphaAggregate
 AggregateState = aggregate_module.AggregateState
+registry_module = import_any("src.simulation.agents.aggregate_registry")
+AggregateRegistry = registry_module.AggregateRegistry
 grid_module = import_any("src.simulation.utils.grid")
 LocalGrid = grid_module.LocalGrid
 neuron_module = import_any("src.simulation.agents.neuron")
@@ -176,6 +178,8 @@ class TestAlphaTransmission:
     def test_ruptured_neuron_releases_all_uncleared_alpha_and_aggregates(self):
         neuron = make_neuron(alpha_release_amount=0.01)
         environment = AlphaTransmissionEnvironment()
+        environment.aggregate_registry = AggregateRegistry()
+        neuron.bind_environment(environment)
         release_point = DiscretePoint(4, 4)
         environment.add_agent(neuron, release_point)
         internal_point = DiscretePoint(1, 1)
@@ -199,7 +203,7 @@ class TestAlphaTransmission:
         assert free_alpha.compartment == AlphaSynucleinCompartment.EXTRACELLULAR
         assert free_alpha.owner_neuron is None
         assert aggregate.owner_neuron is None
-        assert neuron.aggregate_registry.aggregate_for(aggregate.aggregate_id) is None
+        assert neuron.aggregate_registry.aggregate_for(aggregate.aggregate_id) is aggregate
         assert all(member.compartment == AlphaSynucleinCompartment.EXTRACELLULAR for member in members)
         assert all(member.owner_neuron is None for member in members)
 

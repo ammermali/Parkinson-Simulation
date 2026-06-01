@@ -11,6 +11,8 @@ sn_module = import_any(
 )
 SNEnvironmentConfig = sn_module.SNEnvironmentConfig
 SubstantiaNigra = sn_module.SubstantiaNigra
+registry_module = import_any("src.simulation.agents.aggregate_registry")
+AggregateRegistry = registry_module.AggregateRegistry
 
 
 def make_config() -> SNEnvironmentConfig:
@@ -30,6 +32,11 @@ class TestSubstantiaNigra:
         assert environment.scalars.extracellular_debris == 0.4
         assert environment.scalars.inflammation_level == 0.5
         assert environment.scalars.dopamine_output == 0.2
+
+    def test_owns_environment_level_aggregate_registry(self):
+        environment = SubstantiaNigra(TestRepastGrid(), make_config())
+
+        assert isinstance(environment.aggregate_registry, AggregateRegistry)
 
     def test_effect_methods_accumulate_tick_buffers(self):
         environment = SubstantiaNigra(TestRepastGrid(), make_config())
@@ -102,6 +109,23 @@ class TestSubstantiaNigra:
         assert environment.scalars.inflammation_level == pytest.approx(0.2)
         assert environment.last_committed_effects.debris_added == pytest.approx(0.1)
         assert environment.last_committed_effects.inflammation_added == pytest.approx(0.2)
+
+    def test_commit_effects_applies_baseline_debris_turnover(self):
+        config = SNEnvironmentConfig(
+            initial_debris=0.0,
+            initial_inflammation=0.0,
+            initial_dopamine=0.0,
+            debris_decay=0.0,
+            inflammation_decay=0.0,
+            dopamine_smoothing=1.0,
+            baseline_debris_input=0.02,
+        )
+        environment = SubstantiaNigra(TestRepastGrid(), config)
+
+        environment.commit_effects(max_possible_dopamine=1.0)
+
+        assert environment.scalars.extracellular_debris == pytest.approx(0.02)
+        assert environment.last_committed_effects.debris_added == pytest.approx(0.02)
 
     def test_grid_wrappers_delegate_position_and_agents_at(self):
         repast_grid = TestRepastGrid()

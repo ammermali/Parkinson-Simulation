@@ -142,7 +142,6 @@ damage:
   alpha_damage_weight: 0.35
 rates:
   dopamine_release_rate: 0.18
-  compromised_dopamine_release_fraction: 0.33
   dopamine_factor_healthy: 1.0
   dopamine_factor_compromised: 0.55
   dopamine_factor_apoptotic: 0.15
@@ -160,7 +159,6 @@ alpha:
     config = factory.build_neuron_config(Params(str(path)), rng=TestRng(random_value=0.0))
 
     assert config.dopamine_release_rate == pytest.approx(0.18)
-    assert config.compromised_dopamine_release_fraction == pytest.approx(0.33)
     assert config.apoptotic_internal_damage_threshold == pytest.approx(0.42)
     assert config.dopamine_factor_healthy == pytest.approx(1.0)
     assert config.dopamine_factor_compromised == pytest.approx(0.55)

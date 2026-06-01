@@ -120,11 +120,6 @@ class ConfigFactory:
                 "max_damage_increment_per_tick",
                 1.0
             ),
-            compromised_dopamine_release_fraction=_number_or(
-                rates,
-                "compromised_dopamine_release_fraction",
-                0.6
-            ),
             apoptotic_internal_damage_threshold=_number_or(
                 damage,
                 "apoptotic_internal_damage_threshold",
@@ -138,7 +133,7 @@ class ConfigFactory:
             dopamine_factor_compromised=_number_or(
                 rates,
                 "dopamine_factor_compromised",
-                _number_or(rates, "compromised_dopamine_release_fraction", 0.6)
+                0.6
             ),
             dopamine_factor_apoptotic=_number_or(
                 rates,

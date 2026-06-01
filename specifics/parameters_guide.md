@@ -31,7 +31,7 @@ Global runtime, population, world and logging parameters.
 | `world.buffer_size` | `2` | Repast/MPI ghost-cell buffer.                                                                                              |
 | `logging.enabled` | `true` | Default logging switch used when a sub-logger does not override it.                                                        |
 | `logging.run_id` | `default_run` | Identifier written into output logs.                                                                                       |
-| `logging.output_dir` | `src/simulation/output/logs` | Directory for runtime and initialization logs.                                                                             |
+| `logging.output_dir` | `output/simulation/logs` | Directory for runtime and initialization logs.                                                                             |
 | `logging.causal.enabled` | `true` | Enables G0 causal nodes and edges. Useful for mechanism analysis.                                                          |
 | `logging.initialization.enabled` | `true` | Writes initial agent conditions and baseline alpha nodes.                                                                  |
 | `logging.scalar_stdout` | `true` | Prints main extracellular scalars every tick.                                                                              |
@@ -92,7 +92,6 @@ Controls extracellular perception, cumulative damage, alpha transmission and eac
 | `damage.debris_damage_weight` | `0.3` | Extracellular debris contribution to neuron stress. |
 | `damage.alpha_damage_weight` | `0.31` | Nearby alpha contribution to neuron stress. Lower values reduce alpha-driven rupture pressure. |
 | `rates.dopamine_release_rate` | `0.18` | Dopamine released by a healthy neuron before normalization. |
-| `rates.compromised_dopamine_release_fraction` | `0.6` | Fraction of healthy dopamine release retained by `Compromised` neurons. |
 | `rates.dopamine_factor_healthy` | `1.0` | State-specific dopamine factor for `Healthy` neurons. |
 | `rates.dopamine_factor_compromised` | `0.55` | State-specific dopamine factor for `Compromised` neurons. |
 | `rates.dopamine_factor_apoptotic` | `0.15` | Residual dopamine factor for `Apoptotic` neurons when they perform dopamine-coupled release. |

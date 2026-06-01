@@ -86,7 +86,7 @@ class CausalTraceLogger:
     successful causal outcome must carry probability data."""
 
     schema_version = "2.0-json"
-    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "src/simulation/output/logs", enabled: bool = False, agent_type_map: Optional[dict[Any, str]] = None, params: Optional[dict[str, Any]] = None, model_version: Optional[str] = None):
+    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "output/simulation/logs", enabled: bool = False, agent_type_map: Optional[dict[Any, str]] = None, params: Optional[dict[str, Any]] = None, model_version: Optional[str] = None):
         self.run_id = run_id
         self.rank = rank
         self.comm = comm

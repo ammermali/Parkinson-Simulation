@@ -15,7 +15,7 @@ world:
 logging:
   enabled: true
   run_id: default_run
-  output_dir: src/simulation/output/logs
+  output_dir: output/simulation/logs
   causal:
     enabled: true
   initialization:

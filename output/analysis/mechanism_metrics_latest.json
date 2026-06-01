@@ -1,0 +1,953 @@
+{
+  "runs": [
+    {
+      "all_mechanisms": {
+        "counts": {
+          "aggregate_matures_to_lewy_body": 2,
+          "alpha_added_to_aggregate": 4,
+          "alpha_misfolding": 283,
+          "alpha_misfolding_pressure": 283,
+          "alpha_oligomerization_intention": 251,
+          "alpha_state_by_aggregation": 4,
+          "astrocyte_reactive_inflammation_release": 7511,
+          "astrocyte_state_action_policy": 10000,
+          "astrocyte_state_update": 38,
+          "astrocyte_support_inflammation_reduction": 2489,
+          "consumed_mitochondrion_partial_demand_reduction": 21,
+          "damage_accumulation": 57,
+          "damaged_mitochondrion_debris_release": 3989,
+          "damaged_mitochondrion_stress_release": 3989,
+          "lysosome_activity_transition": 717,
+          "lysosome_degradation_failure": 150,
+          "lysosome_degradation_success": 223,
+          "lysosome_overwhelmed_by_target": 12,
+          "lysosome_selects_degradation_target": 388,
+          "lysosome_state_action_policy": 50000,
+          "microglia_activation_by_nearby_alpha": 19,
+          "microglia_clearing_by_debris": 1,
+          "microglia_debris_clearance": 372,
+          "microglia_inflammation_release": 7241,
+          "microglia_state_action_policy": 10000,
+          "microglia_state_update": 20,
+          "mitochondrion_energy_demand_reduction": 95852,
+          "mitochondrion_fusion_debris_reduction": 120,
+          "mitochondrion_fusion_repair": 120,
+          "mitochondrion_fusion_stress_reduction": 120,
+          "mitochondrion_lifecycle_transition": 140,
+          "mitochondrion_state_action_policy": 100000,
+          "mitochondrion_stress_release": 39,
+          "neuron_assigns_degradation_target": 388,
+          "neuron_dopamine_release": 3094,
+          "neuron_dump_debris": 416,
+          "neuron_energy_demand_commit": 10000,
+          "neuron_intracellular_debris_commit": 512,
+          "neuron_oxidative_stress_commit": 513,
+          "neuron_registers_degradation_target": 460,
+          "neuron_state_action_policy": 10000,
+          "neuron_state_by_external_stress": 57,
+          "neuron_state_by_internal_damage": 31,
+          "neuron_stress_inflammation_release": 158,
+          "sn_debris_added_commit": 1592,
+          "sn_debris_removed_commit": 1488,
+          "sn_dopamine_release_commit": 2000,
+          "sn_inflammation_added_commit": 1668,
+          "sn_inflammation_removed_commit": 532
+        },
+        "first_tick": {
+          "aggregate_matures_to_lewy_body": 44,
+          "alpha_added_to_aggregate": 42,
+          "alpha_misfolding": 7,
+          "alpha_misfolding_pressure": 7,
+          "alpha_oligomerization_intention": 24,
+          "alpha_state_by_aggregation": 42,
+          "astrocyte_reactive_inflammation_release": 120,
+          "astrocyte_state_action_policy": 1,
+          "astrocyte_state_update": 6,
+          "astrocyte_support_inflammation_reduction": 1,
+          "consumed_mitochondrion_partial_demand_reduction": 93,
+          "damage_accumulation": 142,
+          "damaged_mitochondrion_debris_release": 95,
+          "damaged_mitochondrion_stress_release": 95,
+          "lysosome_activity_transition": 9,
+          "lysosome_degradation_failure": 27,
+          "lysosome_degradation_success": 11,
+          "lysosome_overwhelmed_by_target": 46,
+          "lysosome_selects_degradation_target": 9,
+          "lysosome_state_action_policy": 1,
+          "microglia_activation_by_nearby_alpha": 154,
+          "microglia_clearing_by_debris": 129,
+          "microglia_debris_clearance": 129,
+          "microglia_inflammation_release": 154,
+          "microglia_state_action_policy": 1,
+          "microglia_state_update": 154,
+          "mitochondrion_energy_demand_reduction": 1,
+          "mitochondrion_fusion_debris_reduction": 18,
+          "mitochondrion_fusion_repair": 18,
+          "mitochondrion_fusion_stress_reduction": 18,
+          "mitochondrion_lifecycle_transition": 18,
+          "mitochondrion_state_action_policy": 1,
+          "mitochondrion_stress_release": 93,
+          "neuron_assigns_degradation_target": 9,
+          "neuron_dopamine_release": 1,
+          "neuron_dump_debris": 156,
+          "neuron_energy_demand_commit": 1,
+          "neuron_intracellular_debris_commit": 18,
+          "neuron_oxidative_stress_commit": 18,
+          "neuron_registers_degradation_target": 7,
+          "neuron_state_action_policy": 1,
+          "neuron_state_by_external_stress": 142,
+          "neuron_state_by_internal_damage": 142,
+          "neuron_stress_inflammation_release": 142,
+          "sn_debris_added_commit": 103,
+          "sn_debris_removed_commit": 129,
+          "sn_dopamine_release_commit": 1,
+          "sn_inflammation_added_commit": 84,
+          "sn_inflammation_removed_commit": 1
+        },
+        "last_tick": {
+          "aggregate_matures_to_lewy_body": 124,
+          "alpha_added_to_aggregate": 124,
+          "alpha_misfolding": 169,
+          "alpha_misfolding_pressure": 169,
+          "alpha_oligomerization_intention": 158,
+          "alpha_state_by_aggregation": 124,
+          "astrocyte_reactive_inflammation_release": 500,
+          "astrocyte_state_action_policy": 500,
+          "astrocyte_state_update": 131,
+          "astrocyte_support_inflammation_reduction": 133,
+          "consumed_mitochondrion_partial_demand_reduction": 106,
+          "damage_accumulation": 171,
+          "damaged_mitochondrion_debris_release": 500,
+          "damaged_mitochondrion_stress_release": 500,
+          "lysosome_activity_transition": 172,
+          "lysosome_degradation_failure": 158,
+          "lysosome_degradation_success": 169,
+          "lysosome_overwhelmed_by_target": 129,
+          "lysosome_selects_degradation_target": 170,
+          "lysosome_state_action_policy": 500,
+          "microglia_activation_by_nearby_alpha": 136,
+          "microglia_clearing_by_debris": 129,
+          "microglia_debris_clearance": 500,
+          "microglia_inflammation_release": 500,
+          "microglia_state_action_policy": 500,
+          "microglia_state_update": 136,
+          "mitochondrion_energy_demand_reduction": 500,
+          "mitochondrion_fusion_debris_reduction": 170,
+          "mitochondrion_fusion_repair": 170,
+          "mitochondrion_fusion_stress_reduction": 170,
+          "mitochondrion_lifecycle_transition": 170,
+          "mitochondrion_state_action_policy": 500,
+          "mitochondrion_stress_release": 106,
+          "neuron_assigns_degradation_target": 170,
+          "neuron_dopamine_release": 156,
+          "neuron_dump_debris": 171,
+          "neuron_energy_demand_commit": 500,
+          "neuron_intracellular_debris_commit": 170,
+          "neuron_oxidative_stress_commit": 170,
+          "neuron_registers_degradation_target": 169,
+          "neuron_state_action_policy": 500,
+          "neuron_state_by_external_stress": 171,
+          "neuron_state_by_internal_damage": 171,
+          "neuron_stress_inflammation_release": 166,
+          "sn_debris_added_commit": 500,
+          "sn_debris_removed_commit": 500,
+          "sn_dopamine_release_commit": 500,
+          "sn_inflammation_added_commit": 500,
+          "sn_inflammation_removed_commit": 133
+        },
+        "outcomes": {
+          "aggregate_matures_to_lewy_body": {
+            "transitioned": 2
+          },
+          "alpha_added_to_aggregate": {
+            "member_added": 4
+          },
+          "alpha_misfolding": {
+            "transitioned": 283
+          },
+          "alpha_misfolding_pressure": {
+            "triggered": 283
+          },
+          "alpha_oligomerization_intention": {
+            "selected": 251
+          },
+          "alpha_state_by_aggregation": {
+            "transitioned": 4
+          },
+          "astrocyte_reactive_inflammation_release": {
+            "buffered": 7511
+          },
+          "astrocyte_state_action_policy": {
+            "selected": 10000
+          },
+          "astrocyte_state_update": {
+            "transitioned": 38
+          },
+          "astrocyte_support_inflammation_reduction": {
+            "buffered": 2489
+          },
+          "consumed_mitochondrion_partial_demand_reduction": {
+            "buffered": 21
+          },
+          "damage_accumulation": {
+            "transitioned": 57
+          },
+          "damaged_mitochondrion_debris_release": {
+            "buffered": 3989
+          },
+          "damaged_mitochondrion_stress_release": {
+            "buffered": 3989
+          },
+          "lysosome_activity_transition": {
+            "transitioned": 717
+          },
+          "lysosome_degradation_failure": {
+            "failed_requeued": 150
+          },
+          "lysosome_degradation_success": {
+            "protein_cleared": 223
+          },
+          "lysosome_overwhelmed_by_target": {
+            "overwhelmed": 6,
+            "transitioned": 6
+          },
+          "lysosome_selects_degradation_target": {
+            "assigned": 388
+          },
+          "lysosome_state_action_policy": {
+            "selected": 50000
+          },
+          "microglia_activation_by_nearby_alpha": {
+            "triggered": 19
+          },
+          "microglia_clearing_by_debris": {
+            "triggered": 1
+          },
+          "microglia_debris_clearance": {
+            "buffered": 372
+          },
+          "microglia_inflammation_release": {
+            "buffered": 7241
+          },
+          "microglia_state_action_policy": {
+            "selected": 10000
+          },
+          "microglia_state_update": {
+            "transitioned": 20
+          },
+          "mitochondrion_energy_demand_reduction": {
+            "buffered": 95852
+          },
+          "mitochondrion_fusion_debris_reduction": {
+            "buffered": 120
+          },
+          "mitochondrion_fusion_repair": {
+            "transitioned": 120
+          },
+          "mitochondrion_fusion_stress_reduction": {
+            "buffered": 120
+          },
+          "mitochondrion_lifecycle_transition": {
+            "transitioned": 140
+          },
+          "mitochondrion_state_action_policy": {
+            "selected": 100000
+          },
+          "mitochondrion_stress_release": {
+            "buffered": 39
+          },
+          "neuron_assigns_degradation_target": {
+            "assigned": 388
+          },
+          "neuron_dopamine_release": {
+            "buffered": 3094
+          },
+          "neuron_dump_debris": {
+            "buffered": 416
+          },
+          "neuron_energy_demand_commit": {
+            "committed": 10000
+          },
+          "neuron_intracellular_debris_commit": {
+            "committed": 512
+          },
+          "neuron_oxidative_stress_commit": {
+            "committed": 513
+          },
+          "neuron_registers_degradation_target": {
+            "registered": 460
+          },
+          "neuron_state_action_policy": {
+            "selected": 10000
+          },
+          "neuron_state_by_external_stress": {
+            "triggered": 57
+          },
+          "neuron_state_by_internal_damage": {
+            "triggered": 31
+          },
+          "neuron_stress_inflammation_release": {
+            "buffered": 158
+          },
+          "sn_debris_added_commit": {
+            "committed": 1592
+          },
+          "sn_debris_removed_commit": {
+            "committed": 1488
+          },
+          "sn_dopamine_release_commit": {
+            "committed": 2000
+          },
+          "sn_inflammation_added_commit": {
+            "committed": 1668
+          },
+          "sn_inflammation_removed_commit": {
+            "committed": 532
+          }
+        },
+        "probability_summary": {
+          "alpha_misfolding": {
+            "count": 283,
+            "max": 0.8310000000000001,
+            "mean": 0.0355992361917414,
+            "min": 0.001
+          },
+          "alpha_oligomerization_intention": {
+            "count": 251,
+            "max": 0.13562499999999997,
+            "mean": 0.08453324196983933,
+            "min": 0.034999999999999996
+          },
+          "lysosome_degradation_failure": {
+            "count": 150,
+            "max": 0.6,
+            "mean": 0.5999999999999991,
+            "min": 0.6
+          },
+          "lysosome_degradation_success": {
+            "count": 223,
+            "max": 0.6,
+            "mean": 0.5999999999999975,
+            "min": 0.6
+          },
+          "lysosome_overwhelmed_by_target": {
+            "count": 6,
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0
+          },
+          "mitochondrion_lifecycle_transition": {
+            "count": 130,
+            "max": 0.35750000000000004,
+            "mean": 0.04651685968446887,
+            "min": 0.007222222222222223
+          }
+        },
+        "rng_summary": {
+          "alpha_misfolding": {
+            "count": 283,
+            "max": 0.5442641086848942,
+            "mean": 0.016941710946619976,
+            "min": 3.4307702695413056e-06
+          },
+          "alpha_oligomerization_intention": {
+            "count": 251,
+            "max": 0.10107832951177032,
+            "mean": 0.043147069171445306,
+            "min": 0.000553637685401065
+          },
+          "lysosome_degradation_failure": {
+            "count": 150,
+            "max": 0.9988598802975968,
+            "mean": 0.7914431547399687,
+            "min": 0.6004892760452735
+          },
+          "lysosome_degradation_success": {
+            "count": 223,
+            "max": 0.5986680078224542,
+            "mean": 0.2966066841036146,
+            "min": 0.0012510301434154325
+          },
+          "lysosome_overwhelmed_by_target": {
+            "count": 6,
+            "max": 0.972728399345075,
+            "mean": 0.4291590024255502,
+            "min": 0.07971894539899227
+          },
+          "mitochondrion_lifecycle_transition": {
+            "count": 140,
+            "max": 0.28128662910854707,
+            "mean": 0.03394386494345664,
+            "min": 4.2943775172554766e-06
+          }
+        },
+        "source_target_pairs": {
+          "aggregate_matures_to_lewy_body": {
+            "AlphaAggregate->AlphaAggregate": 2
+          },
+          "alpha_added_to_aggregate": {
+            "AlphaSynuclein->AlphaAggregate": 4
+          },
+          "alpha_misfolding": {
+            "AlphaSynuclein->AlphaSynuclein": 283
+          },
+          "alpha_misfolding_pressure": {
+            "Neuron->AlphaSynuclein": 283
+          },
+          "alpha_oligomerization_intention": {
+            "Neuron->AlphaSynuclein": 251
+          },
+          "alpha_state_by_aggregation": {
+            "AlphaSynuclein->AlphaSynuclein": 4
+          },
+          "astrocyte_reactive_inflammation_release": {
+            "Astrocyte->SubstantiaNigra": 7511
+          },
+          "astrocyte_state_action_policy": {
+            "Astrocyte->Astrocyte": 10000
+          },
+          "astrocyte_state_update": {
+            "Astrocyte->Astrocyte": 38
+          },
+          "astrocyte_support_inflammation_reduction": {
+            "Astrocyte->SubstantiaNigra": 2489
+          },
+          "consumed_mitochondrion_partial_demand_reduction": {
+            "Mitochondrion->Neuron": 21
+          },
+          "damage_accumulation": {
+            "Neuron->Neuron": 57
+          },
+          "damaged_mitochondrion_debris_release": {
+            "Mitochondrion->Neuron": 3989
+          },
+          "damaged_mitochondrion_stress_release": {
+            "Mitochondrion->Neuron": 3989
+          },
+          "lysosome_activity_transition": {
+            "Lysosome->Lysosome": 717
+          },
+          "lysosome_degradation_failure": {
+            "Lysosome->AlphaSynuclein": 150
+          },
+          "lysosome_degradation_success": {
+            "Lysosome->AlphaSynuclein": 223
+          },
+          "lysosome_overwhelmed_by_target": {
+            "Lysosome->AlphaAggregate": 6,
+            "Lysosome->Lysosome": 6
+          },
+          "lysosome_selects_degradation_target": {
+            "Lysosome->AlphaAggregate": 6,
+            "Lysosome->AlphaSynuclein": 382
+          },
+          "lysosome_state_action_policy": {
+            "Lysosome->Lysosome": 50000
+          },
+          "microglia_activation_by_nearby_alpha": {
+            "SubstantiaNigra->Microglia": 19
+          },
+          "microglia_clearing_by_debris": {
+            "SubstantiaNigra->Microglia": 1
+          },
+          "microglia_debris_clearance": {
+            "Microglia->SubstantiaNigra": 372
+          },
+          "microglia_inflammation_release": {
+            "Microglia->SubstantiaNigra": 7241
+          },
+          "microglia_state_action_policy": {
+            "Microglia->Microglia": 10000
+          },
+          "microglia_state_update": {
+            "Microglia->Microglia": 20
+          },
+          "mitochondrion_energy_demand_reduction": {
+            "Mitochondrion->Neuron": 95852
+          },
+          "mitochondrion_fusion_debris_reduction": {
+            "Mitochondrion->Neuron": 120
+          },
+          "mitochondrion_fusion_repair": {
+            "Mitochondrion->Mitochondrion": 120
+          },
+          "mitochondrion_fusion_stress_reduction": {
+            "Mitochondrion->Neuron": 120
+          },
+          "mitochondrion_lifecycle_transition": {
+            "Mitochondrion->Mitochondrion": 140
+          },
+          "mitochondrion_state_action_policy": {
+            "Mitochondrion->Mitochondrion": 100000
+          },
+          "mitochondrion_stress_release": {
+            "Mitochondrion->Neuron": 39
+          },
+          "neuron_assigns_degradation_target": {
+            "Lysosome->AlphaAggregate": 6,
+            "Lysosome->AlphaSynuclein": 382
+          },
+          "neuron_dopamine_release": {
+            "Neuron->SubstantiaNigra": 3094
+          },
+          "neuron_dump_debris": {
+            "Neuron->SubstantiaNigra": 416
+          },
+          "neuron_energy_demand_commit": {
+            "Neuron->Neuron": 10000
+          },
+          "neuron_intracellular_debris_commit": {
+            "Neuron->Neuron": 512
+          },
+          "neuron_oxidative_stress_commit": {
+            "Neuron->Neuron": 513
+          },
+          "neuron_registers_degradation_target": {
+            "Neuron->AlphaAggregate": 8,
+            "Neuron->AlphaSynuclein": 442,
+            "Neuron->Mitochondrion": 10
+          },
+          "neuron_state_action_policy": {
+            "Neuron->Neuron": 10000
+          },
+          "neuron_state_by_external_stress": {
+            "SubstantiaNigra->Neuron": 57
+          },
+          "neuron_state_by_internal_damage": {
+            "Neuron->Neuron": 31
+          },
+          "neuron_stress_inflammation_release": {
+            "Neuron->SubstantiaNigra": 158
+          },
+          "sn_debris_added_commit": {
+            "SubstantiaNigra->SubstantiaNigra": 1592
+          },
+          "sn_debris_removed_commit": {
+            "SubstantiaNigra->SubstantiaNigra": 1488
+          },
+          "sn_dopamine_release_commit": {
+            "SubstantiaNigra->SubstantiaNigra": 2000
+          },
+          "sn_inflammation_added_commit": {
+            "SubstantiaNigra->SubstantiaNigra": 1668
+          },
+          "sn_inflammation_removed_commit": {
+            "SubstantiaNigra->SubstantiaNigra": 532
+          }
+        },
+        "source_types": {
+          "aggregate_matures_to_lewy_body": {
+            "AlphaAggregate": 2
+          },
+          "alpha_added_to_aggregate": {
+            "AlphaSynuclein": 4
+          },
+          "alpha_misfolding": {
+            "AlphaSynuclein": 283
+          },
+          "alpha_misfolding_pressure": {
+            "Neuron": 283
+          },
+          "alpha_oligomerization_intention": {
+            "Neuron": 251
+          },
+          "alpha_state_by_aggregation": {
+            "AlphaSynuclein": 4
+          },
+          "astrocyte_reactive_inflammation_release": {
+            "Astrocyte": 7511
+          },
+          "astrocyte_state_action_policy": {
+            "Astrocyte": 10000
+          },
+          "astrocyte_state_update": {
+            "Astrocyte": 38
+          },
+          "astrocyte_support_inflammation_reduction": {
+            "Astrocyte": 2489
+          },
+          "consumed_mitochondrion_partial_demand_reduction": {
+            "Mitochondrion": 21
+          },
+          "damage_accumulation": {
+            "Neuron": 57
+          },
+          "damaged_mitochondrion_debris_release": {
+            "Mitochondrion": 3989
+          },
+          "damaged_mitochondrion_stress_release": {
+            "Mitochondrion": 3989
+          },
+          "lysosome_activity_transition": {
+            "Lysosome": 717
+          },
+          "lysosome_degradation_failure": {
+            "Lysosome": 150
+          },
+          "lysosome_degradation_success": {
+            "Lysosome": 223
+          },
+          "lysosome_overwhelmed_by_target": {
+            "Lysosome": 12
+          },
+          "lysosome_selects_degradation_target": {
+            "Lysosome": 388
+          },
+          "lysosome_state_action_policy": {
+            "Lysosome": 50000
+          },
+          "microglia_activation_by_nearby_alpha": {
+            "SubstantiaNigra": 19
+          },
+          "microglia_clearing_by_debris": {
+            "SubstantiaNigra": 1
+          },
+          "microglia_debris_clearance": {
+            "Microglia": 372
+          },
+          "microglia_inflammation_release": {
+            "Microglia": 7241
+          },
+          "microglia_state_action_policy": {
+            "Microglia": 10000
+          },
+          "microglia_state_update": {
+            "Microglia": 20
+          },
+          "mitochondrion_energy_demand_reduction": {
+            "Mitochondrion": 95852
+          },
+          "mitochondrion_fusion_debris_reduction": {
+            "Mitochondrion": 120
+          },
+          "mitochondrion_fusion_repair": {
+            "Mitochondrion": 120
+          },
+          "mitochondrion_fusion_stress_reduction": {
+            "Mitochondrion": 120
+          },
+          "mitochondrion_lifecycle_transition": {
+            "Mitochondrion": 140
+          },
+          "mitochondrion_state_action_policy": {
+            "Mitochondrion": 100000
+          },
+          "mitochondrion_stress_release": {
+            "Mitochondrion": 39
+          },
+          "neuron_assigns_degradation_target": {
+            "Lysosome": 388
+          },
+          "neuron_dopamine_release": {
+            "Neuron": 3094
+          },
+          "neuron_dump_debris": {
+            "Neuron": 416
+          },
+          "neuron_energy_demand_commit": {
+            "Neuron": 10000
+          },
+          "neuron_intracellular_debris_commit": {
+            "Neuron": 512
+          },
+          "neuron_oxidative_stress_commit": {
+            "Neuron": 513
+          },
+          "neuron_registers_degradation_target": {
+            "Neuron": 460
+          },
+          "neuron_state_action_policy": {
+            "Neuron": 10000
+          },
+          "neuron_state_by_external_stress": {
+            "SubstantiaNigra": 57
+          },
+          "neuron_state_by_internal_damage": {
+            "Neuron": 31
+          },
+          "neuron_stress_inflammation_release": {
+            "Neuron": 158
+          },
+          "sn_debris_added_commit": {
+            "SubstantiaNigra": 1592
+          },
+          "sn_debris_removed_commit": {
+            "SubstantiaNigra": 1488
+          },
+          "sn_dopamine_release_commit": {
+            "SubstantiaNigra": 2000
+          },
+          "sn_inflammation_added_commit": {
+            "SubstantiaNigra": 1668
+          },
+          "sn_inflammation_removed_commit": {
+            "SubstantiaNigra": 532
+          }
+        },
+        "target_types": {
+          "aggregate_matures_to_lewy_body": {
+            "AlphaAggregate": 2
+          },
+          "alpha_added_to_aggregate": {
+            "AlphaAggregate": 4
+          },
+          "alpha_misfolding": {
+            "AlphaSynuclein": 283
+          },
+          "alpha_misfolding_pressure": {
+            "AlphaSynuclein": 283
+          },
+          "alpha_oligomerization_intention": {
+            "AlphaSynuclein": 251
+          },
+          "alpha_state_by_aggregation": {
+            "AlphaSynuclein": 4
+          },
+          "astrocyte_reactive_inflammation_release": {
+            "SubstantiaNigra": 7511
+          },
+          "astrocyte_state_action_policy": {
+            "Astrocyte": 10000
+          },
+          "astrocyte_state_update": {
+            "Astrocyte": 38
+          },
+          "astrocyte_support_inflammation_reduction": {
+            "SubstantiaNigra": 2489
+          },
+          "consumed_mitochondrion_partial_demand_reduction": {
+            "Neuron": 21
+          },
+          "damage_accumulation": {
+            "Neuron": 57
+          },
+          "damaged_mitochondrion_debris_release": {
+            "Neuron": 3989
+          },
+          "damaged_mitochondrion_stress_release": {
+            "Neuron": 3989
+          },
+          "lysosome_activity_transition": {
+            "Lysosome": 717
+          },
+          "lysosome_degradation_failure": {
+            "AlphaSynuclein": 150
+          },
+          "lysosome_degradation_success": {
+            "AlphaSynuclein": 223
+          },
+          "lysosome_overwhelmed_by_target": {
+            "AlphaAggregate": 6,
+            "Lysosome": 6
+          },
+          "lysosome_selects_degradation_target": {
+            "AlphaAggregate": 6,
+            "AlphaSynuclein": 382
+          },
+          "lysosome_state_action_policy": {
+            "Lysosome": 50000
+          },
+          "microglia_activation_by_nearby_alpha": {
+            "Microglia": 19
+          },
+          "microglia_clearing_by_debris": {
+            "Microglia": 1
+          },
+          "microglia_debris_clearance": {
+            "SubstantiaNigra": 372
+          },
+          "microglia_inflammation_release": {
+            "SubstantiaNigra": 7241
+          },
+          "microglia_state_action_policy": {
+            "Microglia": 10000
+          },
+          "microglia_state_update": {
+            "Microglia": 20
+          },
+          "mitochondrion_energy_demand_reduction": {
+            "Neuron": 95852
+          },
+          "mitochondrion_fusion_debris_reduction": {
+            "Neuron": 120
+          },
+          "mitochondrion_fusion_repair": {
+            "Mitochondrion": 120
+          },
+          "mitochondrion_fusion_stress_reduction": {
+            "Neuron": 120
+          },
+          "mitochondrion_lifecycle_transition": {
+            "Mitochondrion": 140
+          },
+          "mitochondrion_state_action_policy": {
+            "Mitochondrion": 100000
+          },
+          "mitochondrion_stress_release": {
+            "Neuron": 39
+          },
+          "neuron_assigns_degradation_target": {
+            "AlphaAggregate": 6,
+            "AlphaSynuclein": 382
+          },
+          "neuron_dopamine_release": {
+            "SubstantiaNigra": 3094
+          },
+          "neuron_dump_debris": {
+            "SubstantiaNigra": 416
+          },
+          "neuron_energy_demand_commit": {
+            "Neuron": 10000
+          },
+          "neuron_intracellular_debris_commit": {
+            "Neuron": 512
+          },
+          "neuron_oxidative_stress_commit": {
+            "Neuron": 513
+          },
+          "neuron_registers_degradation_target": {
+            "AlphaAggregate": 8,
+            "AlphaSynuclein": 442,
+            "Mitochondrion": 10
+          },
+          "neuron_state_action_policy": {
+            "Neuron": 10000
+          },
+          "neuron_state_by_external_stress": {
+            "Neuron": 57
+          },
+          "neuron_state_by_internal_damage": {
+            "Neuron": 31
+          },
+          "neuron_stress_inflammation_release": {
+            "SubstantiaNigra": 158
+          },
+          "sn_debris_added_commit": {
+            "SubstantiaNigra": 1592
+          },
+          "sn_debris_removed_commit": {
+            "SubstantiaNigra": 1488
+          },
+          "sn_dopamine_release_commit": {
+            "SubstantiaNigra": 2000
+          },
+          "sn_inflammation_added_commit": {
+            "SubstantiaNigra": 1668
+          },
+          "sn_inflammation_removed_commit": {
+            "SubstantiaNigra": 532
+          }
+        }
+      },
+      "coverage_notes": [
+        "Lewy body formation, lysosome success/failure/overwhelming and target claims are counted from explicit causal edges.",
+        "aggregation_events_inferred groups alpha_added_to_aggregate edges by tick, owner and aggregate target; member additions remain the exact logged count.",
+        "Actual alpha release and absorption are currently visible mainly through neuron action-selection edges unless dedicated transfer edges are added to the runtime logger."
+      ],
+      "input_edge_files": [
+        "src\\simulation\\output\\logs\\g0_edges.jsonl"
+      ],
+      "output_dir": "src\\simulation\\output\\logs",
+      "selected_mechanisms": {
+        "alpha_synuclein": {
+          "aggregate_member_additions": 4,
+          "aggregate_merges": 0,
+          "aggregate_targets_touched": 1,
+          "aggregation_events_inferred": 2,
+          "lewy_body_maturations": 2,
+          "members_added_by_aggregate": {
+            "1:3:2": 4
+          },
+          "misfolding_events": 283,
+          "oligomerization_intentions": 251
+        },
+        "glia": {
+          "astrocyte_actions": {
+            "provide_support": 2489,
+            "release_inflammation": 7511
+          },
+          "astrocyte_reactive_inflammation_release": 7511,
+          "astrocyte_support_inflammation_reduction": 2489,
+          "microglia_actions": {
+            "clear_debris": 372,
+            "release_inflammation": 7241,
+            "scan": 2387
+          },
+          "microglia_debris_clearance": 372,
+          "microglia_inflammation_release": 7241
+        },
+        "lysosome": {
+          "degradation_attempts": {
+            "by_outcome": {
+              "failed_requeued": 150,
+              "overwhelmed": 6,
+              "protein_cleared": 223
+            },
+            "by_target_type": {
+              "AlphaAggregate": {
+                "overwhelmed": 6
+              },
+              "AlphaSynuclein": {
+                "failure": 150,
+                "success": 223
+              }
+            },
+            "failure": 150,
+            "overwhelm_rate": 0.0158311345646438,
+            "overwhelmed": 6,
+            "overwhelmed_by_lewy_body": 6,
+            "success": 223,
+            "success_rate": 0.5883905013192612,
+            "total": 379
+          },
+          "successful_target_claims": {
+            "by_target_type": {
+              "AlphaAggregate": 6,
+              "AlphaSynuclein": 382
+            },
+            "note": "Counts lysosome_selects_degradation_target only; neuron_assigns_degradation_target is the same claim seen from the neuron buffer.",
+            "total": 388
+          },
+          "targets_registered": {
+            "by_target_type": {
+              "AlphaAggregate": 8,
+              "AlphaSynuclein": 442,
+              "Mitochondrion": 10
+            },
+            "total": 460
+          }
+        },
+        "mitochondrion": {
+          "damaged_debris_releases": 3989,
+          "damaged_stress_releases": 3989,
+          "fusion_repairs": 120,
+          "lifecycle_transitions": {
+            "Consumed->Damaged": 10,
+            "Consumed->Healthy": 120,
+            "Healthy->Consumed": 130
+          },
+          "lysosome_repairs": 0,
+          "stress_releases": 39
+        },
+        "neuron": {
+          "actions": {
+            "absorb_alphasynuclein": 69,
+            "dump_debris": 6586,
+            "release_alphasynuclein": 93,
+            "release_dopamine": 3094,
+            "signal_stress": 158
+          },
+          "debris_dumps": 416,
+          "dopamine_releases": 3094,
+          "state_transitions": {
+            "Apoptotic->Ruptured": 19,
+            "Compromised->Apoptotic": 19,
+            "Healthy->Compromised": 19
+          },
+          "stress_inflammation_releases": 158
+        }
+      },
+      "total_edges": 327364
+    }
+  ]
+}

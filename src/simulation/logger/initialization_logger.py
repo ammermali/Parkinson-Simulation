@@ -38,7 +38,7 @@ class InitializationLogger:
     should not be used as a causal edge source. It's purpose is only for visualization of initial conditions."""
 
     schema_version = "1.0-initialization-json"
-    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "src/simulation/output/logs", enabled: bool = False):
+    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "output/initialization_log", enabled: bool = False):
         self.run_id = run_id
         self.rank = rank
         self.comm = comm

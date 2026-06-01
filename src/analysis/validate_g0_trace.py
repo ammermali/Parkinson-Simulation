@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -29,6 +30,8 @@ PHASE_INDEX = {
 }
 
 FORBIDDEN_RUNTIME_FIELDS = {"position", "x", "y", "z", "config", "raw_perception", "details_json"}
+DEFAULT_SIMULATION_LOG_DIR = Path("output/simulation/logs")
+DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/g0_trace_validation_latest.json")
 
 
 def load_jsonl(path: Path) -> tuple[list[dict], dict]:
@@ -125,9 +128,19 @@ def load_many_jsonl(paths: list[Path]) -> tuple[list[dict], dict]:
 
 
 def main() -> None:
-    output_dir = Path("src/simulation/output/logs")
-    report = validate_trace(output_dir)
-    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    parser = argparse.ArgumentParser(description="Validate G0 causal trace logs.")
+    parser.add_argument("output_dir", nargs="?", type=Path, default=DEFAULT_SIMULATION_LOG_DIR)
+    parser.add_argument("--output", type=Path, default=DEFAULT_ANALYSIS_OUTPUT, help="JSON destination for the validation report.")
+    parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/analysis.")
+    args = parser.parse_args()
+
+    report = validate_trace(args.output_dir)
+    payload = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
+    if args.stdout:
+        print(payload)
+        return
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(payload + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -36,7 +36,6 @@ damage:
 
 rates:
   dopamine_release_rate: 0.18
-  compromised_dopamine_release_fraction: 0.6
   dopamine_factor_healthy: 1.0
   dopamine_factor_compromised: 0.55
   dopamine_factor_apoptotic: 0.15

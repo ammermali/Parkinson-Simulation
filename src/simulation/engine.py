@@ -135,6 +135,8 @@ TICK_METRIC_COLUMNS = (
     *TICK_METRIC_COUNT_KEYS,
 )
 
+DEFAULT_SIMULATION_OUTPUT_DIR = "output/simulation/logs"
+
 
 class ParkinsonModel:
     """Top-level simulation model executed by Repast4Py.
@@ -545,7 +547,7 @@ class ParkinsonModel:
 
     def _create_loggers(self, params: dict[str, Any]) -> tuple[CausalTraceLogger, InitializationLogger]:
         """Create separated causal and initialization loggers."""
-        output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", "src/simulation/output/logs"))
+        output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", DEFAULT_SIMULATION_OUTPUT_DIR))
         run_id = str(_param(params, "logging.run_id", f"run_seed_{self.seed}"))
         agent_type_map = {
             self.agent_type.NEURON: "Neuron",
@@ -586,7 +588,7 @@ class ParkinsonModel:
         self._tick_metrics_file = None
         if not self.tick_metrics_enabled or self.rank != 0:
             return
-        output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", "src/simulation/output/logs"))
+        output_dir = self._resolve_output_dir(_param(params, "logging.output_dir", DEFAULT_SIMULATION_OUTPUT_DIR))
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / "tick_metrics.csv"
         self._tick_metrics_file = path.open("w", encoding="utf-8", newline="")

@@ -21,6 +21,9 @@ ALPHA_AGGREGATION_MECHANISMS = {
     "aggregate_matures_to_lewy_body",
 }
 
+DEFAULT_SIMULATION_LOG_DIR = Path("output/simulation/logs")
+DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/mechanism_metrics_latest.json")
+
 
 class NumericSummary:
     """Streaming summary for probability and RNG values stored on causal edges."""
@@ -535,9 +538,10 @@ def _numeric_summary_dict(summaries: dict[str, NumericSummary]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Count biological mechanisms from G0 causal trace logs.")
-    parser.add_argument("output_dirs", nargs="*", type=Path, default=[Path("src/simulation/output/logs")])
+    parser.add_argument("output_dirs", nargs="*", type=Path, default=[DEFAULT_SIMULATION_LOG_DIR])
     parser.add_argument("--no-by-tick", action="store_true", help="Omit per-tick mechanism counts from the report.")
-    parser.add_argument("--output", type=Path, help="Optional JSON destination. Prints to stdout when omitted.")
+    parser.add_argument("--output", type=Path, default=DEFAULT_ANALYSIS_OUTPUT, help="JSON destination for the report.")
+    parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/analysis.")
     args = parser.parse_args()
 
     report = {
@@ -547,7 +551,7 @@ def main() -> None:
         ]
     }
     payload = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
-    if args.output is None:
+    if args.stdout:
         print(payload)
         return
     args.output.parent.mkdir(parents=True, exist_ok=True)

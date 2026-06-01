@@ -75,10 +75,9 @@ class NeuronConfig:
     alpha_absorption_rate: float
     alpha_release_amount: float
     max_damage_increment_per_tick: float = 1.0
-    compromised_dopamine_release_fraction: float = 0.6
     apoptotic_internal_damage_threshold: float = 0.0
     dopamine_factor_healthy: float = 1.0
-    dopamine_factor_compromised: Optional[float] = None
+    dopamine_factor_compromised: float = 0.6
     dopamine_factor_apoptotic: float = 0.0
     dopamine_factor_ruptured: float = 0.0
     alpha_release_dopamine_fraction: float = 0.35
@@ -556,11 +555,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         if self.state == NeuronState.HEALTHY:
             state_factor = self.cfg.dopamine_factor_healthy
         elif self.state == NeuronState.COMPROMISED:
-            state_factor = (
-                self.cfg.dopamine_factor_compromised
-                if self.cfg.dopamine_factor_compromised is not None
-                else self.cfg.compromised_dopamine_release_fraction
-            )
+            state_factor = self.cfg.dopamine_factor_compromised
         elif self.state == NeuronState.APOPTOTIC:
             state_factor = self.cfg.dopamine_factor_apoptotic
         elif self.state == NeuronState.RUPTURED:

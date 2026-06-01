@@ -10,6 +10,8 @@ from src.simulation.logger.causal_trace_logger import uid_of, value_of
 
 @dataclass(frozen=True)
 class InitializationAgentRecord:
+    """Full initial-condition record for one created agent."""
+
     run_id: str
     rank: int
     uid: str
@@ -32,13 +34,11 @@ class InitializationAgentRecord:
 
 
 class InitializationLogger:
-    """Exhaustive JSON logger for initial conditions and visualization.
-    Unlike CausalTraceLogger, this logger intentionally stores position, full
-    configs, owners, buffers and scalar snapshots. It runs only during setup and
-    should not be used as a causal edge source. It's purpose is only for visualization of initial conditions."""
+    """Exhaustive JSON logger for initial conditions and visualization."""
 
     schema_version = "1.0-initialization-json"
-    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "output/initialization_log", enabled: bool = False):
+
+    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "output/simulation/logs", enabled: bool = False):
         self.run_id = run_id
         self.rank = rank
         self.comm = comm
@@ -59,14 +59,20 @@ class InitializationLogger:
 
     @property
     def agents_path(self) -> Path:
+        """Merged initialization agent JSONL path."""
+
         return self.output_dir / "initialization_agents.jsonl"
 
     @property
     def manifest_path(self) -> Path:
+        """Initialization manifest path."""
+
         return self.output_dir / "initialization_manifest.json"
 
     @property
     def summary_path(self) -> Path:
+        """Initialization summary path."""
+
         return self.output_dir / "initialization_summary.json"
 
     def record_agent(self, agent, position=None, owner=None, target=None, raw_details: Optional[dict[str, Any]] = None) -> None:
@@ -245,6 +251,8 @@ def safe_serialize(value):
 
 
 def point_dict(point) -> Optional[dict[str, int]]:
+    """Serialize a DiscretePoint-like object into a small dictionary."""
+
     if point is None:
         return None
     if hasattr(point, "x") and hasattr(point, "y"):

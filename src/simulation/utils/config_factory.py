@@ -13,6 +13,8 @@ ParamsSource = Union[Params, str, Path]
 
 
 class ConfigFactory:
+    """Build runtime config dataclasses from YAML-backed Params objects."""
+
     @staticmethod
     def build_substantia_nigra_config(params: ParamsSource = "substantia_nigra") -> SNEnvironmentConfig:
         """Build Substantia Nigra environment config from YAML parameters."""
@@ -347,7 +349,7 @@ def _optional_section(params: Params, name: str) -> dict:
 
 
 def _mapping(section: dict, name: str, default: dict) -> dict:
-    """Read a nested mapping while keeping a small fallback path."""
+    """Read a nested mapping, returning default when the section is omitted."""
     value = section.get(name, default)
     if value is None:
         return default

@@ -3,7 +3,11 @@ from typing import Iterable, Optional
 from src.simulation.utils.clamp import clamp
 
 class LocalGrid:
+    """Small grid adapter used for intracellular grids and Repast-backed grids."""
+
     def __init__(self, width: Optional[int] = None, height: Optional[int] = None, repast_grid=None):
+        """Create either a pure local grid or a wrapper around a Repast grid."""
+
         self._repast_grid = repast_grid
         self._offset_cache: dict[tuple[int, bool], list[tuple[int, int]]] = {}
         if repast_grid is not None:
@@ -24,15 +28,21 @@ class LocalGrid:
 
     @classmethod
     def from_repast_grid(cls, grid) -> "LocalGrid":
+        """Wrap an existing Repast grid with the local grid API."""
+
         return cls(repast_grid=grid)
 
     @property
     def is_repast_backed(self) -> bool:
+        """Return whether operations are delegated to a Repast grid."""
+
         return self._repast_grid is not None
 
     # AGENTS
 
     def add_agent(self, agent, point: DiscretePoint):
+        """Place an agent at a point, registering it when needed."""
+
         if self.is_repast_backed:
             old_point = self._repast_grid.get_location(agent)
             if old_point is None:
@@ -65,11 +75,15 @@ class LocalGrid:
         return point
 
     def position_of(self, agent) -> Optional[DiscretePoint]:
+        """Return the current position of an agent, if it is on the grid."""
+
         if self.is_repast_backed:
             return self._repast_grid.get_location(agent)
         return self._locations.get(agent)
 
     def move_to(self, agent, point: DiscretePoint) -> Optional[DiscretePoint]:
+        """Move an agent to a point and return the accepted position."""
+
         if self.is_repast_backed:
             return self._repast_grid.move(agent, point)
         if not self._inside_bounds(point.x, point.y):
@@ -92,6 +106,8 @@ class LocalGrid:
         return point
 
     def remove_agent(self, agent):
+        """Remove an agent from the grid and local registry."""
+
         if self.is_repast_backed:
             self._repast_grid.remove(agent)
             if agent in self.agent_registry:
@@ -109,12 +125,16 @@ class LocalGrid:
             self.agent_registry.remove(agent)
 
     def agents_at(self, point: DiscretePoint) -> list:
+        """Return agents currently occupying one grid point."""
+
         if self.is_repast_backed:
             return list(self._repast_grid.get_agents(point))
         return list(self._cells.get((point.x, point.y), []))
 
     # NEIGHBORHOOD
     def neighbor_points(self, center: DiscretePoint, radius: int = 1, include_center: bool = True) -> Iterable[DiscretePoint]:
+        """Yield valid points in a square Moore neighborhood."""
+
         for dx, dy in self._get_offsets(radius, include_center):
             x = center.x + dx
             y = center.y + dy
@@ -122,11 +142,15 @@ class LocalGrid:
                 yield DiscretePoint(x, y)
 
     def agents_in_radius(self, center: DiscretePoint, radius: int = 1, include_center: bool = False) -> Iterable:
+        """Yield agents found in the neighborhood around center."""
+
         for point in self.neighbor_points(center, radius, include_center):
             for agent in self.agents_at(point):
                 yield agent
 
     def count_agents_in_radius(self, center: DiscretePoint, radius: int = 1, agent_type: Optional[int] = None, include_center: bool = False) -> int:
+        """Count nearby agents, optionally filtering by Repast type id."""
+
         total = 0
         for point in self.neighbor_points(center, radius, include_center):
             if self.is_repast_backed and agent_type is not None:
@@ -136,6 +160,8 @@ class LocalGrid:
         return total
 
     def density_of_type(self, center: DiscretePoint, radius: int, agent_type: Optional[int] = None, include_center: bool = True) -> float:
+        """Return local occupancy density clamped to [0, 1]."""
+
         points = list(self.neighbor_points(center, radius, include_center))
         if not points:
             return 0.0

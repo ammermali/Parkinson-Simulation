@@ -143,7 +143,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.pending_action: Optional[NeuronAction] = None
         self.rng = RNG
         self.environment = environment
-        self._fallback_aggregate_registry: Optional[AggregateRegistry] = None
 
         # Cumulative value for cell damage
         self.cell_damage: float = 0.0
@@ -179,16 +178,14 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         """Return the environment-level aggregate registry visible to this neuron.
 
         Runtime neurons are bound to SubstantiaNigra, which owns the shared
-        registry for the rank. A lazy fallback is kept for isolated unit tests
-        that instantiate a neuron without an environment.
+        registry for the rank. A neuron without such an environment cannot
+        process alpha aggregation because aggregate identity is global.
         """
 
         registry = getattr(getattr(self, "environment", None), "aggregate_registry", None)
         if registry is not None:
             return registry
-        if self._fallback_aggregate_registry is None:
-            self._fallback_aggregate_registry = AggregateRegistry()
-        return self._fallback_aggregate_registry
+        raise RuntimeError("Neuron requires an environment with aggregate_registry.")
 
     def bind_environment(self, environment):
         """Expose the shared extracellular environment to this neuron."""

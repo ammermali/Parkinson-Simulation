@@ -7,14 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-PHASE_INDEX = {
-    "0_pre_state": 0,
-    "1_perception": 1,
-    "2_state_update": 2,
-    "3_action_selection": 3,
-    "4_effect_buffer": 4,
-    "5_commit": 5
-}
+PHASE_INDEX = {"0_pre_state": 0, "1_perception": 1, "2_state_update": 2, "3_action_selection": 3, "4_effect_buffer": 4, "5_commit": 5}
 NODE_KINDS = {"agent_state", "env_field", "internal_field", "action", "aggregate", "buffer"}
 LEVELS = {"extracellular", "intracellular", "macro", "environment"}
 RELATIONS = {"state_transition", "threshold_trigger", "action_selection", "field_effect", "internal_field_effect", "agent_to_agent", "aggregation", "degradation", "target_assignment", "buffer_commit", "lifecycle", "structural"}
@@ -22,6 +15,8 @@ RELATIONS = {"state_transition", "threshold_trigger", "action_selection", "field
 
 @dataclass(frozen=True)
 class CausalNode:
+    """One temporal G0 node emitted by the runtime causal logger."""
+
     run_id: str
     tick: int
     phase: str
@@ -42,6 +37,8 @@ class CausalNode:
 
 @dataclass(frozen=True)
 class CausalEdge:
+    """One directed causal relation between two G0 nodes."""
+
     run_id: str
     tick: int
     phase_from: str
@@ -84,7 +81,6 @@ class CausalTraceLogger:
     This logger stores typed nodes and edges only. It intentionally omits raw
     perceptions, positions, full configs and failed stochastic checks unless a
     successful causal outcome must carry probability data."""
-
     schema_version = "2.0-json"
     def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "output/simulation/logs", enabled: bool = False, agent_type_map: Optional[dict[Any, str]] = None, params: Optional[dict[str, Any]] = None, model_version: Optional[str] = None):
         self.run_id = run_id
@@ -241,6 +237,8 @@ class CausalTraceLogger:
         return edge
 
     def state_transition(self, agent, from_state, to_state, mechanism: str, rule_id: Optional[str] = None, probability: Optional[float] = None, rng_value: Optional[float] = None, outcome: str = "transitioned", owner=None, compartment=None) -> None:
+        """Log a causal state transition for one agent."""
+
         if value_of(from_state) == value_of(to_state):
             return
         source = self.agent_state_node(agent, from_state, "0_pre_state", owner=owner, compartment=compartment)
@@ -248,37 +246,49 @@ class CausalTraceLogger:
         self.edge(source, target, "state_transition", mechanism, rule_id=rule_id, probability=probability, rng_value=rng_value, outcome=outcome, compartment=compartment, owner_uid=uid_of(owner))
 
     def threshold_trigger(self, source_node: CausalNode, target_agent, target_state, mechanism: str, rule_id: str, predicate: str, owner=None, compartment=None) -> None:
+        """Log a perceived field or condition that triggered a transition."""
+
         target = self.agent_state_node(target_agent, target_state, "2_state_update", owner=owner, compartment=compartment)
         self.edge(source_node, target, "threshold_trigger", mechanism, rule_id=rule_id, predicate=predicate, outcome="triggered", compartment=compartment, owner_uid=uid_of(owner))
 
     def action_selection(self, agent, action, mechanism: str, rule_id: Optional[str] = None, owner=None, compartment=None) -> CausalNode:
+        """Log the action selected by an agent and return its action node."""
+
         source = self.agent_state_node(agent, getattr(agent, "state", None), "2_state_update", owner=owner, compartment=compartment)
         target = self.action_node(agent, action, "3_action_selection", owner=owner, compartment=compartment)
         self.edge(source, target, "action_selection", mechanism, rule_id=rule_id, outcome="selected", compartment=compartment, owner_uid=uid_of(owner))
         return target
 
     def field_effect(self, agent, action, field: str, effect_value: float, effect_sign: str, mechanism: str, rule_id: Optional[str] = None, unit: Optional[str] = None) -> None:
+        """Log an extracellular field effect buffered by an action."""
+
         source = self.action_node(agent, action, "3_action_selection")
         target = self.env_field_node(f"SN.{field}_buffer", field=f"{field}_buffer", phase="4_effect_buffer", value=effect_value)
         self.edge(source, target, "field_effect", mechanism, rule_id=rule_id, effect_value=effect_value, effect_sign=effect_sign, effect_unit=unit, outcome="buffered")
 
     def internal_field_effect(self, agent, owner, field: str, effect_value: float, effect_sign: str, mechanism: str, action=None, rule_id: Optional[str] = None, unit: Optional[str] = None) -> None:
+        """Log an intracellular field effect buffered inside a neuron."""
+
         source = self.action_node(agent, action or getattr(agent, "pending_action", None), "3_action_selection", owner=owner, compartment="Intracellular")
         target = self.internal_field_node(owner, field=f"{field}_buffer", phase="4_effect_buffer", value=effect_value)
         self.edge(source, target, "internal_field_effect", mechanism, rule_id=rule_id, effect_value=effect_value, effect_sign=effect_sign, effect_unit=unit, outcome="buffered", compartment="Intracellular", owner_uid=uid_of(owner))
 
     def target_assignment(self, source_agent, target_agent, mechanism: str, rule_id: Optional[str] = None, owner=None, outcome: str = "assigned") -> None:
+        """Log an agent-to-agent target assignment such as lysosome targeting."""
+
         source = self.agent_state_node(source_agent, getattr(source_agent, "state", None), "3_action_selection", owner=owner, compartment="Intracellular")
         target = self.agent_state_node(target_agent, getattr(target_agent, "state", None), "4_effect_buffer", owner=owner, compartment="Intracellular")
         self.edge(source, target, "target_assignment", mechanism, rule_id=rule_id, outcome=outcome, compartment="Intracellular", owner_uid=uid_of(owner))
 
     def aggregation(self, source_agent, aggregate_agent, mechanism: str, aggregate_id: Optional[int] = None, owner=None, outcome: str = "aggregated") -> None:
+        """Log alpha-synuclein contribution to an aggregate."""
+
         source = self.agent_state_node(source_agent, getattr(source_agent, "state", None), "2_state_update", owner=owner, compartment="Intracellular")
         target = self.aggregate_snapshot(aggregate_agent, aggregate_id=aggregate_id, owner=owner)
         self.edge(source, target, "aggregation", mechanism, rule_id="ALPHA_AGGREGATION", outcome=outcome, compartment="Intracellular", owner_uid=uid_of(owner))
 
     def aggregate_snapshot(self, aggregate_agent, aggregate_id: Optional[int] = None, owner=None, phase: str = "4_effect_buffer") -> CausalNode:
-        """Aggregate node."""
+        """Create a G0 node representing one aggregate at the current tick."""
         resolved_id = aggregate_id or getattr(aggregate_agent, "aggregate_id", "")
         owner_uid = uid_of(owner)
         aggregate_identity = f"{owner_uid or 'None'}::Aggregate_{resolved_id}"
@@ -298,11 +308,15 @@ class CausalTraceLogger:
         )
 
     def degradation(self, lysosome, target_agent, mechanism: str, outcome: str, probability: Optional[float] = None, rng_value: Optional[float] = None, owner=None) -> None:
+        """Log a lysosome degradation attempt or outcome."""
+
         source = self.action_node(lysosome, getattr(lysosome, "pending_action", None), "3_action_selection", owner=owner, compartment="Intracellular")
         target = self.agent_state_node(target_agent, getattr(target_agent, "state", None), "4_effect_buffer", owner=owner, compartment="Intracellular")
         self.edge(source, target, "degradation", mechanism, rule_id="LYSOSOME_DEGRADATION", probability=probability, rng_value=rng_value, outcome=outcome, compartment="Intracellular", owner_uid=uid_of(owner))
 
     def buffer_commit(self, source_field: str, target_field: str, effect_value: float, effect_sign: str, mechanism: str, level: str = "environment", owner=None) -> None:
+        """Log the commit of a buffered scalar effect."""
+
         if effect_value == 0:
             return
         if level == "environment":
@@ -314,26 +328,38 @@ class CausalTraceLogger:
         self.edge(source, target, "buffer_commit", mechanism, effect_value=effect_value, effect_sign=effect_sign, outcome="committed", owner_uid=uid_of(owner))
 
     def snapshot_field(self, field: str, value: float, level: str = "environment", owner=None) -> CausalNode:
+        """Log a committed scalar field value as a G0 node."""
+
         if level == "environment":
             return self.env_field_node(f"SN.{field}", field, "5_commit", value)
         return self.internal_field_node(owner, field, "5_commit", value)
 
     def agent_state_node(self, agent, state, phase: str, owner=None, compartment=None) -> CausalNode:
+        """Create a G0 node for an agent state."""
+
         level = "macro" if type_name(agent) == "Neuron" else "intracellular" if owner is not None else "extracellular"
         return self.node("agent_state", phase, uid=uid_of(agent), agent_type=type_name(agent), state=state, level=level, owner_uid=uid_of(owner), compartment=compartment or getattr(agent, "compartment", None))
 
     def action_node(self, agent, action, phase: str, owner=None, compartment=None) -> CausalNode:
+        """Create a G0 node for an action selection."""
+
         action_name = value_of(action) or "action"
         return self.node("action", phase, uid=uid_of(agent), agent_type=type_name(agent), state=action_name, level="intracellular" if owner is not None else "extracellular", owner_uid=uid_of(owner), compartment=compartment or getattr(agent, "compartment", None), label=f"{type_name(agent)}_{short_uid(agent)}.{action_name}")
 
     def env_field_node(self, label: str, field: str, phase: str, value: Optional[float] = None) -> CausalNode:
+        """Create a G0 node for a Substantia Nigra field or buffer."""
+
         return self.node("env_field" if not field.endswith("_buffer") else "buffer", phase, uid="SN", agent_type="SubstantiaNigra", field=field, value=value, level="environment", label=label)
 
     def internal_field_node(self, owner, field: str, phase: str, value: Optional[float] = None) -> CausalNode:
+        """Create a G0 node for an intracellular neuron field or buffer."""
+
         owner_uid = uid_of(owner) or "Neuron"
         return self.node("internal_field" if not field.endswith("_buffer") else "buffer", phase, uid=owner_uid, agent_type="Neuron", field=field, value=value, level="macro", owner_uid=owner_uid, label=f"Neuron_{short_uid(owner)}.internal.{field}")
 
     def node_id(self, kind: str, phase: str, uid: Optional[str], agent_type: Optional[str], state, field: Optional[str], label: Optional[str], tick: int) -> str:
+        """Build a deterministic temporal node id."""
+
         suffix = PHASE_INDEX[phase]
         if label:
             base = label
@@ -344,6 +370,8 @@ class CausalTraceLogger:
         return f"{base}@{tick}.{suffix}"
 
     def contraction_keys(self, kind: str, uid: Optional[str], agent_type: Optional[str], state, field: Optional[str], label: Optional[str]) -> tuple[str, str]:
+        """Return G1 and G2 grouping keys stored on logged rows."""
+
         if kind in ("env_field", "buffer") and uid == "SN":
             key = f"SN.{field}"
             return key, key
@@ -359,10 +387,14 @@ class CausalTraceLogger:
         return f"{agent_type}_{short}.{state_value}", f"{agent_type}.{state_value}"
 
     def edge_id(self) -> str:
+        """Return the next rank-local edge id."""
+
         self._edge_index += 1
         return f"edge_{self.rank}_{self._edge_index:08d}"
 
     def close(self) -> None:
+        """Flush rank-local logs and merge them on rank zero."""
+
         if not self.enabled:
             return
         self._barrier()
@@ -443,6 +475,8 @@ class CausalTraceLogger:
 
 
 def bind_causal_logger(agent, model):
+    """Attach the model logger to an agent when available."""
+
     logger = causal_logger_from(model)
     try:
         agent.causal_logger = logger
@@ -452,6 +486,8 @@ def bind_causal_logger(agent, model):
 
 
 def causal_logger_from(source) -> Optional[CausalTraceLogger]:
+    """Return a CausalTraceLogger from a model, agent or logger object."""
+
     if source is None:
         return None
     logger = getattr(source, "causal_logger", None)
@@ -461,6 +497,8 @@ def causal_logger_from(source) -> Optional[CausalTraceLogger]:
 
 
 def uid_of(agent) -> Optional[str]:
+    """Return a stable string uid for Repast and test agents."""
+
     if agent is None:
         return None
     uid = getattr(agent, "uid", None)
@@ -475,6 +513,8 @@ def uid_of(agent) -> Optional[str]:
 
 
 def short_uid(agent) -> str:
+    """Return the local-id prefix of an agent uid."""
+
     uid = uid_of(agent)
     if not uid:
         return ""
@@ -482,12 +522,16 @@ def short_uid(agent) -> str:
 
 
 def type_name(agent) -> Optional[str]:
+    """Return the concrete class name of an agent-like object."""
+
     if agent is None:
         return None
     return type(agent).__name__
 
 
 def value_of(value) -> Optional[str]:
+    """Return enum values and other objects as stable strings."""
+
     if value is None:
         return None
     if isinstance(value, Enum):
@@ -496,6 +540,8 @@ def value_of(value) -> Optional[str]:
 
 
 def effect_sign(value: float) -> Optional[str]:
+    """Return a sign label for a numeric effect."""
+
     if value > 0:
         return "positive"
     if value < 0:
@@ -517,6 +563,8 @@ def _rank_file_sort_key(path: Path) -> tuple[int, str]:
 
 
 def rule_map() -> dict[str, dict[str, str]]:
+    """Return human-readable descriptions for logged rule ids."""
+
     return {
         "MICROGLIA_ACTIVATION_INFLAMMATION_HIGH": {
             "description": "Microglia can become Activated with probability proportional to inflammation pressure between its low and high thresholds.",

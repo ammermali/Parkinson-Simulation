@@ -307,9 +307,9 @@ class ParkinsonModel:
             intracellular.population.mitochondria
             intracellular.population.lysosomes
         """
-        alpha_count = self._intracellular_count(params, "alpha", "alpha")
-        mitochondria_count = self._intracellular_count(params,"mitochondria","mitochondria")
-        lysosome_count = self._intracellular_count(params,"lysosomes","lysosomes")
+        alpha_count = self._intracellular_count("alpha")
+        mitochondria_count = self._intracellular_count("mitochondria")
+        lysosome_count = self._intracellular_count("lysosomes")
         for index in range(alpha_count):
             alpha = AlphaSynuclein(
                 local_id=self._new_id(),
@@ -438,9 +438,10 @@ class ParkinsonModel:
         cell = index % (width * height)
         return DiscretePoint(cell % width, cell // width)
 
-    def _intracellular_count(self, system_params: dict[str, Any], neuron_key: str, legacy_key: str) -> int:
-        """Read initial intracellular population from neuron.yaml first."""
-        return int(_param(self.neuron_param_values, f"intracellular.population.{neuron_key}", _param(system_params, f"intracellular.population.{legacy_key}", 0)))
+    def _intracellular_count(self, neuron_key: str) -> int:
+        """Read one initial intracellular population count from neuron.yaml."""
+
+        return int(_param(self.neuron_param_values, f"intracellular.population.{neuron_key}", 0))
 
     def _local_population_count(self, global_count: int) -> int:
         """Return this rank's share of a global agent population.
@@ -666,14 +667,13 @@ class ParkinsonModel:
         return counts
 
     def _count_tick_alpha_agents(self, grid, counts: dict[str, int]) -> None:
-        """Count alpha proteins and aggregate agents from one grid registry."""
-
+        """Count free proteins and aggregate member proteins from one grid."""
         for agent in getattr(grid, "agent_registry", []):
             if isinstance(agent, AlphaSynuclein) and agent.aggregate_id is None:
                 if getattr(agent, "state", None) != AlphaSynucleinState.CLEARED:
                     counts["free_alpha"] += 1
             elif isinstance(agent, AlphaAggregate):
-                counts["alpha_aggregate"] += 1
+                counts["alpha_aggregate"] += agent.size
 
     def _log_tick(self) -> None:
         """Print a compact scalar log from rank 0 only."""

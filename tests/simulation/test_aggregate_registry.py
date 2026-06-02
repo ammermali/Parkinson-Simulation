@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from repast4py.space import DiscretePoint
 
 from testhelpers import TestRng, import_any, make_alpha_config
@@ -43,7 +44,8 @@ def make_neuron() -> Neuron:
         alpha_absorption_rate=0.1,
         alpha_release_amount=0.05,
     )
-    return Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99)
+    environment = SimpleNamespace(aggregate_registry=AggregateRegistry())
+    return Neuron(local_id=1, rank=0, type_id=10, config=config, alpha_type_id=99, environment=environment)
 
 
 def make_alpha(local_id: int, owner_neuron: Neuron) -> AlphaSynuclein:

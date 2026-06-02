@@ -488,6 +488,26 @@ class TestParkinsonModel:
         assert rows[1].startswith("1,")
         assert rows[1].endswith(",0,0,0,0,0,0")
 
+    def test_tick_metrics_count_aggregate_member_proteins_not_aggregate_agents(self, engine_module):
+        aggregate = engine_module.AlphaAggregate(
+            local_id=1,
+            rank=0,
+            type_id=engine_module.AgentType.ALPHA,
+            aggregate_id=77,
+            member_ids={"a:1", "a:2", "a:3"},
+            state=engine_module.AggregateState.OLIGOMER,
+        )
+        grid = types.SimpleNamespace(agent_registry=[aggregate])
+        model = object.__new__(engine_module.ParkinsonModel)
+        counts = {
+            key: 0
+            for key in engine_module.TICK_METRIC_COUNT_KEYS
+        }
+
+        model._count_tick_alpha_agents(grid, counts)
+
+        assert counts["alpha_aggregate"] == 3
+
     def test_progress_stdout_reports_start_and_configured_tick_interval(self, engine_module, capsys):
         params = {
             "stop.at": 3,

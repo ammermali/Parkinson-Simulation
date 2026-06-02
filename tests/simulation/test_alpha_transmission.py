@@ -29,6 +29,7 @@ class AlphaTransmissionEnvironment:
     """Grid-backed Substantia Nigra stand-in for alpha transfer tests."""
     def __init__(self):
         self.grid = LocalGrid(width=10, height=10)
+        self.aggregate_registry = AggregateRegistry()
         self.scalars = SimpleNamespace(
             extracellular_debris=0.0,
             inflammation_level=0.0,
@@ -119,12 +120,14 @@ def make_config(alpha_absorption_rate: float = 1.0, alpha_release_amount: float 
 
 
 def make_neuron(alpha_absorption_rate: float = 1.0, alpha_release_amount: float = 0.5) -> Neuron:
+    environment = AlphaTransmissionEnvironment()
     return Neuron(
         local_id=1,
         rank=0,
         type_id=10,
         config=make_config(alpha_absorption_rate, alpha_release_amount),
         alpha_type_id=99,
+        environment=environment,
     )
 
 

@@ -45,7 +45,8 @@ def make_config() -> NeuronConfig:
 
 
 def make_neuron(alpha_type_id: int = 99) -> Neuron:
-    return Neuron(local_id=1, rank=0, type_id=10, config=make_config(), alpha_type_id=alpha_type_id)
+    environment = SimpleNamespace(aggregate_registry=AggregateRegistry())
+    return Neuron(local_id=1, rank=0, type_id=10, config=make_config(), alpha_type_id=alpha_type_id, environment=environment)
 
 
 def make_aggregate(local_id: int) -> AlphaAggregate:

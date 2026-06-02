@@ -1,5 +1,6 @@
 import pytest
 from dataclasses import replace
+from types import SimpleNamespace
 from repast4py.space import DiscretePoint
 from testhelpers import TestAgent, TestRng, import_any, make_alpha_config, make_lysosome_config, make_mitochondrion_config
 
@@ -11,6 +12,8 @@ AlphaSynucleinState = alpha_module.AlphaSynucleinState
 aggregate_module = import_any("src.simulation.agents.aggregate")
 AlphaAggregate = aggregate_module.AlphaAggregate
 AggregateState = aggregate_module.AggregateState
+registry_module = import_any("src.simulation.agents.aggregate_registry")
+AggregateRegistry = registry_module.AggregateRegistry
 mitochondrion_module = import_any("src.simulation.agents.mitochondrion")
 Mitochondrion = mitochondrion_module.Mitochondrion
 MitochondrionConfig = mitochondrion_module.MitochondrionConfig
@@ -49,7 +52,8 @@ def make_config() -> NeuronConfig:
 
 
 def make_neuron() -> Neuron:
-    return Neuron(local_id=1, rank=0, type_id=10, config=make_config(), alpha_type_id=99)
+    environment = SimpleNamespace(aggregate_registry=AggregateRegistry())
+    return Neuron(local_id=1, rank=0, type_id=10, config=make_config(), alpha_type_id=99, environment=environment)
 
 
 def make_lysosome(neuron: Neuron, **kwargs) -> Lysosome:

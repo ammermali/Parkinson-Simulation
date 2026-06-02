@@ -408,12 +408,18 @@ class CausalTraceLogger:
         if not self.enabled or node.node_id in self._seen_nodes:
             return
         self._seen_nodes.add(node.node_id)
-        self._append_jsonl(self.nodes_path, asdict(node))
+        row = asdict(node)
+        self._append_jsonl(self.nodes_path, row)
+        if self.rank == 0:
+            self._append_jsonl(self.merged_nodes_path, row)
 
     def _write_edge(self, edge: CausalEdge) -> None:
         if not self.enabled:
             return
-        self._append_jsonl(self.edges_path, asdict(edge))
+        row = asdict(edge)
+        self._append_jsonl(self.edges_path, row)
+        if self.rank == 0:
+            self._append_jsonl(self.merged_edges_path, row)
 
     def _append_jsonl(self, path: Path, row: dict[str, Any]) -> None:
         with path.open("a", encoding="utf-8") as stream:

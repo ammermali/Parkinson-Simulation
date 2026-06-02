@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import argparse
 import json
 from collections import Counter, defaultdict
@@ -31,7 +30,7 @@ PHASE_INDEX = {
 
 FORBIDDEN_RUNTIME_FIELDS = {"position", "x", "y", "z", "config", "raw_perception", "details_json"}
 DEFAULT_SIMULATION_LOG_DIR = Path("output/simulation/logs")
-DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/g0_trace_validation_latest.json")
+DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/g0_trace_validation_latest.json") #TODO
 
 
 def load_jsonl(path: Path) -> tuple[list[dict], dict]:

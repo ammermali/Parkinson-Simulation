@@ -1,8 +1,8 @@
 from typing import Iterable, Optional
 from repast4py.space import DiscretePoint
-from src.simulation.agents.adaptiveagent import AdaptiveAgent
-from src.simulation.agents.aggregate import AlphaAggregate, AggregateState
-from src.simulation.agents.alphasynuclein import AlphaSynuclein, AlphaSynucleinState
+from src.simulation.agents.aggregate import AlphaAggregate
+from src.simulation.agents.alphasynuclein import AlphaSynuclein
+from src.simulation.agents.structure import AggregateState, AlphaSynucleinState, AdaptiveAgent
 from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import causal_logger_from
 
@@ -11,12 +11,6 @@ class AggregateInvariantError(RuntimeError):
 
 class AggregateRegistry:
     """Centralization of Alpha-Synuclein lifecycle.
-
-    In full simulations the registry is owned by the SubstantiaNigra
-    environment and exposed to neurons as a shared rank-local service. Habitat
-    arguments still scope processing and validation to one neuronal grid, while
-    aggregate identity and membership persist across release and absorption.
-
     AlphaSynuclein agents only decide whether they want to oligomerize. This
     registry resolves the collective spatial event, like aggregating agents,
     absorbing free misfolded proteins, merging aggregates and maturing oligomers
@@ -51,13 +45,11 @@ class AggregateRegistry:
 
     def aggregates(self, habitat=None) -> list[AlphaAggregate]:
         """Return aggregate agents currently owned by this registry.
-
         When habitat is provided, only aggregates currently located in that
         habitat are returned. This keeps one environment-level registry usable
         by many neurons without making per-neuron summaries double-count every
         aggregate in the shared registry.
         """
-
         if habitat is None:
             return list(self._aggregates.values())
         return [
@@ -177,7 +169,7 @@ class AggregateRegistry:
             aggregate_id=aggregate_id,
             member_ids=set(),
             state=state,
-            owner_neuron=habitat,
+            owner_neuron=habitat
         )
         aggregate.causal_logger = getattr(habitat, "causal_logger", None)
         self._aggregates[aggregate_id] = aggregate
@@ -273,8 +265,7 @@ class AggregateRegistry:
         """Promote an aggregate and every tracked member protein to LewyBody.
         Accepts either an AlphaAggregate object or its registry id. Keeping the
         member transition here makes Lewy body formation a registry-level
-        collective event instead of an individual protein decision.
-        """
+        collective event instead of an individual protein decision."""
         aggregate = self._resolve_aggregate(aggregate_or_id)
         if aggregate is None:
             return False
@@ -341,7 +332,6 @@ class AggregateRegistry:
     def _process_cell(self, habitat, point: DiscretePoint, free_candidates: list[AlphaSynuclein], aggregates: list[AlphaAggregate]):
         """Resolve aggregation, recruitment and maturation inside one cell."""
         self._refresh_aggregate_intentions(aggregates)
-
         lewy_bodies = [
             aggregate
             for aggregate in aggregates
@@ -355,7 +345,6 @@ class AggregateRegistry:
             for alpha in list(free_candidates):
                 self.add_alpha_to_aggregate(habitat, seed, alpha)
             return
-
         recruiting_oligomers = [
             aggregate
             for aggregate in aggregates
@@ -371,7 +360,6 @@ class AggregateRegistry:
             if seed.wants_lewy_body_maturation:
                 self.mature_to_lewy_body(seed)
             return
-
         if len(free_candidates) >= 2:
             aggregate = self.create_aggregate(habitat, point, free_candidates)
             if aggregate is not None and self._should_mature(aggregate):
@@ -484,7 +472,6 @@ class AggregateRegistry:
 
     def _agent_rank(self, agent: AdaptiveAgent) -> int:
         """Read rank without assuming repast4py exposes it as an attribute."""
-
         for attr_name in ("rank", "agent_rank"):
             rank = getattr(agent, attr_name, None)
             if rank is not None and not callable(rank):
@@ -496,7 +483,6 @@ class AggregateRegistry:
 
     def _agent_type_id(self, agent: AdaptiveAgent) -> int:
         """Read type id from either the public ptype API or the Repast UID."""
-
         for attr_name in ("ptype", "type_id", "type"):
             ptype = getattr(agent, attr_name, None)
             if ptype is not None and not callable(ptype):

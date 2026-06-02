@@ -1,55 +1,10 @@
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
-from dataclasses import dataclass
-from repast4py.space import DiscretePoint
 from typing import Optional, List
-from src.simulation.agents.aggregate import AlphaAggregate, AggregateState
+from src.simulation.agents.aggregate import AlphaAggregate
+from src.simulation.agents.structure import LysosomeState, AggregateState, LysosomeAction, LysosomePerception, LysosomeConfig, AdaptiveAgent
 from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from src.simulation.agents.mitochondrion import Mitochondrion
 from src.simulation.utils import clamp, RNG
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
-
-# Internal State Set
-class LysosomeState(str, AdaptiveAgentState):
-    """Operational state of a lysosome inside a neuron."""
-
-    INACTIVE = "Inactive"
-    ACTIVE = "Active"
-    OVERWHELMED = "Overwhelmed"
-
-# Action Set
-class LysosomeAction(str, AdaptiveAgentAction):
-    """Actions a lysosome can perform during its execution phase."""
-
-    SCAN = "scan"
-    SELECT_TARGET = "select_target"
-    DEGRADE = "degrade"
-    IDLE = "idle"
-
-@dataclass(frozen=True)
-class LysosomePerception(AdaptiveAgentPerception):
-    """Snapshot of the degradation context visible to a lysosome."""
-
-    position: Optional[DiscretePoint]
-    targets: List[AdaptiveAgent]
-    task: Optional[AdaptiveAgent]
-    local_aggregate_density: float
-    target_pressure: float
-
-@dataclass(frozen=True)
-class LysosomeConfig:
-    """Tunable lysosomal sensing, movement and cleanup parameters."""
-    perception_radius: int
-    move_radius: int
-    base_degradation_probability: float
-    protein_degradation_ticks: int
-    mitochondrion_repair_ticks: int
-    mitochondrion_repair_probability: float
-    aggregate_degradation_ticks_base: int
-    aggregate_degradation_ticks_per_member: int
-    aggregate_degradation_probability_base: float
-    aggregate_degradation_probability_per_member: float
-    aggregate_overwhelm_probability_base: float
-    aggregate_overwhelm_probability_per_member: float
 
 class Lysosome(AdaptiveAgent):
     """Intracellular degradation agent coordinated by neuron target buffers.

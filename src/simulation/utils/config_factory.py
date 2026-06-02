@@ -1,11 +1,14 @@
 from pathlib import Path
 from typing import Optional, Union
-from src.simulation.agents.alphasynuclein import AlphaSynucleinConfig
-from src.simulation.agents.astrocyte import AstrocyteConfig
-from src.simulation.agents.lysosome import LysosomeConfig
-from src.simulation.agents.microglia import MicrogliaConfig
-from src.simulation.agents.mitochondrion import MitochondrionConfig
-from src.simulation.agents.neuron import NeuronConfig, NeuronInternalConfig
+from src.simulation.agents.structure.config import (
+    AlphaSynucleinConfig,
+    AstrocyteConfig,
+    LysosomeConfig,
+    MicrogliaConfig,
+    MitochondrionConfig,
+    NeuronConfig,
+    NeuronInternalConfig,
+)
 from src.simulation.substantia_nigra import SNEnvironmentConfig
 from src.simulation.utils import clamp, RNG
 from src.simulation.utils.paramsloader import Params

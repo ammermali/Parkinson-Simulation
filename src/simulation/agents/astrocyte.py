@@ -1,44 +1,7 @@
 from typing import Optional
-from repast4py.space import DiscretePoint
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
-from dataclasses import dataclass
+from src.simulation.agents.structure import AstrocyteState, AstrocytePerception, AstrocyteAction, AstrocyteConfig, AdaptiveAgent
 from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
-
-# Internal State Set
-class AstrocyteState(str, AdaptiveAgentState):
-    """Functional extracellular state of an astrocyte."""
-    SUPPORTIVE = "Supportive"
-    REACTIVE = "Reactive"
-
-# Action Set
-class AstrocyteAction(str, AdaptiveAgentAction):
-    """Actions an astrocyte can apply to the shared environment."""
-    SUPPORT = "provide_support"
-    INFLAMMATION = "release_inflammation"
-
-@dataclass(frozen=True)
-class AstrocytePerception(AdaptiveAgentPerception):
-    """Extracellular inflammatory and debris signals sensed by astrocytes."""
-    position: Optional[DiscretePoint]
-    inflammation_level: float
-    extracellular_debris: float
-
-@dataclass
-class AstrocyteConfig:
-    """Astrocyte sensing thresholds, memory and inflammatory effect rates."""
-    inflammation_high_threshold: float
-    inflammation_low_threshold: float
-    debris_high_threshold: float
-    debris_low_threshold: float
-    support_inflammation_reduction_rate: float
-    inflammation_release_rate: float
-    stress_memory_decay: float = 0.0
-    reactive_transition_rate: float = 1.0
-    supportive_recovery_rate: float = 1.0
-    inflammatory_memory_threshold: float = 0.0
-    inflammation_memory_weight: float = 0.0
-    debris_stress_weight: float = 1.0
 
 class Astrocyte(AdaptiveAgent):
     """Extracellular support agent that dampens or amplifies inflammation."""
@@ -67,7 +30,6 @@ class Astrocyte(AdaptiveAgent):
 
     def next(self) -> AstrocyteState:
         """Update astrocyte state from stress memory.
-
         Astrocytes read global inflammatory scalars, so a purely deterministic
         threshold would synchronize the full population. Each instance instead
         integrates stress over time and samples a transition probability from

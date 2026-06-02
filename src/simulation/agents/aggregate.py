@@ -1,33 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable, Optional, TYPE_CHECKING
-from repast4py.space import DiscretePoint
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentAction, AdaptiveAgentPerception, AdaptiveAgentState
+from src.simulation.agents.structure import AggregateAction, AggregatePerception, AggregateState, AdaptiveAgent
 if TYPE_CHECKING:
     from src.simulation.agents.neuron import Neuron
-
-
-class AggregateState(str, AdaptiveAgentState):
-    """State of an aggregate represented as one simulation entity."""
-    OLIGOMER = "Oligomer"
-    LEWY_BODY = "LewyBody"
-
-
-class AggregateAction(str, AdaptiveAgentAction):
-    """Aggregates are immobile for now; registry handles growth and merging."""
-    STAY = "stay"
-
-
-@dataclass(frozen=True)
-class AggregatePerception(AdaptiveAgentPerception):
-    """Minimal perception kept for consistency with the adaptive agent API."""
-    position: Optional[DiscretePoint]
 
 
 @dataclass(eq=False)
 class AlphaAggregate(AdaptiveAgent):
     """Simulation agent representing an alpha-synuclein aggregate.
-
     Free AlphaSynuclein agents are removed from the active grid when they join
     an aggregate. From that point onward this object is the simulation-visible
     unit for movement-free pathology, lysosomal targeting, local aggregate
@@ -98,7 +79,6 @@ class AlphaAggregate(AdaptiveAgent):
 
     def next(self) -> AggregateState:
         """Keep Lewy bodies recruitment-competent between registry passes."""
-
         self.wants_lewy_body_maturation = self.state == AggregateState.LEWY_BODY
         return self.state
 

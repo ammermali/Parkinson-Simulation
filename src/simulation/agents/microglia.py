@@ -1,52 +1,7 @@
 from typing import Optional
-from repast4py.space import DiscretePoint
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
-from dataclasses import dataclass
+from src.simulation.agents.structure import MicrogliaConfig, MicrogliaAction, MicrogliaState, MicrogliaPerception, AdaptiveAgent
 from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
-
-# Internal State Set
-class MicrogliaState(str, AdaptiveAgentState):
-    """Functional extracellular state of a microglial agent."""
-    RESTING = "Resting"
-    CLEARING = "Clearing"
-    ACTIVATED = "Activated"
-
-
-# Action Set
-class MicrogliaAction(str, AdaptiveAgentAction):
-    """Actions a microglial agent can apply to the shared environment."""
-    SCAN = "scan"
-    CLEAR_DEBRIS = "clear_debris"
-    INFLAMMATION = "release_inflammation"
-
-# Set of possible perceptions
-@dataclass(frozen=True)
-class MicrogliaPerception(AdaptiveAgentPerception):
-    """Extracellular signals sensed by microglia."""
-    position: Optional[DiscretePoint]
-    extracellular_debris: float
-    inflammation_level: float
-    nearby_alpha: float
-
-#Params of the specific Microglia
-@dataclass
-class MicrogliaConfig:
-    """Microglia sensing thresholds and environmental effect rates."""
-    per_radius: int
-    debris_high_threshold: float
-    debris_low_threshold: float
-    inflammation_high_threshold: float
-    inflammation_low_threshold: float
-    nearby_alpha_high_threshold: float
-    nearby_alpha_low_threshold: float
-    debris_clearance_rate: float
-    inflammation_release_rate: float
-    move_probability: float
-    activation_transition_rate: float = 1.0
-    clearing_transition_rate: float = 1.0
-    recovery_transition_rate: float = 1.0
-    inflammatory_action_threshold: float = 0.0
 
 class Microglia(AdaptiveAgent):
     """Extracellular immune agent that clears debris or amplifies inflammation."""

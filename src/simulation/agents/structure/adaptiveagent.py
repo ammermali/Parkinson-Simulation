@@ -1,14 +1,9 @@
 from abc import abstractmethod, ABC
 from typing import Optional
 from repast4py import core
-from enum import Enum
-
-class AdaptiveAgentAction(Enum):
-    """Base enum for action labels emitted by adaptive agents."""
-class AdaptiveAgentState(Enum):
-    """Base enum for state labels emitted by adaptive agents."""
-class AdaptiveAgentPerception:
-    """Base class for perception snapshots."""
+from src.simulation.agents.structure.actions import AdaptiveAgentAction
+from src.simulation.agents.structure.perceptions import AdaptiveAgentPerception
+from src.simulation.agents.structure.states import AdaptiveAgentState
 
 class AdaptiveAgent(core.Agent, ABC):
     """Repast agent with the project-wide see/next/action/do contract."""

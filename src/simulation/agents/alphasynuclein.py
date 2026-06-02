@@ -1,51 +1,14 @@
-from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentAction, AdaptiveAgentPerception, AdaptiveAgentState
-from repast4py.space import DiscretePoint
+from typing import Optional
+from src.simulation.agents.structure import AlphaSynucleinState, AlphaSynucleinPerception, AlphaSynucleinAction, AlphaSynucleinConfig, AdaptiveAgent
 from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.utils import RNG, clamp
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from, uid_of
-
-class AlphaSynucleinState(str, AdaptiveAgentState):
-    """State of a single alpha-synuclein protein."""
-    MONOMER = "Monomer"
-    MISFOLDED = "Misfolded"
-    OLIGOMER = "Oligomer"
-    CLEARED = "Cleared"
-    LEWY_BODY = "LewyBody"
-
-class AlphaSynucleinAction(str, AdaptiveAgentAction):
-    """Actions still controlled by a free protein."""
-
-    MOVE = "move"
-    STAY = "stay"
 
 class AlphaSynucleinCompartment(str, Enum):
     """The habitat where the protein currently exists."""
     INTRACELLULAR = "Intracellular"
     EXTRACELLULAR = "Extracellular"
-
-@dataclass(frozen=True)
-class AlphaSynucleinConfig:
-    """Parameters for single-protein perception, movement, and misfolding."""
-    perception_radius: int
-    move_radius: int
-    move_probability: float
-    oxidative_stress_high_threshold: float
-    basal_misfold_probability: float = 0.001
-    aggregate_seeded_misfold_weight: float = 0.2
-    oxidative_misfolding_weight: float = 1.0
-    oligomerization_probability_scale: float = 1.0
-    min_misfolded_ticks_before_oligomerization: int = 0
-
-@dataclass(frozen=True)
-class AlphaSynucleinPerception(AdaptiveAgentPerception):
-    """Local perception used by a free alpha-synuclein protein."""
-    position: Optional[DiscretePoint]
-    oxidative_stress: float
-    local_aggregate_density: float
-    neighbors: List[AdaptiveAgent]
 
 class AlphaSynuclein(AdaptiveAgent):
     """Single alpha-synuclein protein agent.
@@ -101,7 +64,7 @@ class AlphaSynuclein(AdaptiveAgent):
                 position=position,
                 oxidative_stress=0.0,
                 local_aggregate_density=0.0,
-                neighbors=[],
+                neighbors=[]
             )
             self.last_perception = perception
             return perception
@@ -110,7 +73,7 @@ class AlphaSynuclein(AdaptiveAgent):
                 position=None,
                 oxidative_stress=0.0,
                 local_aggregate_density=0.0,
-                neighbors=[],
+                neighbors=[]
             )
             self.last_perception = perception
             return perception
@@ -121,7 +84,7 @@ class AlphaSynuclein(AdaptiveAgent):
             local_aggregate_density=habitat.local_aggregate_density_at(
                 position=position,
                 radius=self.cfg.perception_radius,
-                include_center=True,
+                include_center=True
             ),
             neighbors=[
                 agent
@@ -130,7 +93,7 @@ class AlphaSynuclein(AdaptiveAgent):
                     radius=self.cfg.perception_radius,
                 )
                 if agent is not self
-            ],
+            ]
         )
         self.last_perception = perception
         return perception
@@ -343,10 +306,7 @@ class AlphaSynuclein(AdaptiveAgent):
         """Probability that a misfolded protein asks to join an aggregate."""
         alpha_density = self._neighbor_alpha_density()
         aggregate_density = self._neighbor_aggregate_density()
-        return clamp(
-            self.cfg.oligomerization_probability_scale
-            * (alpha_density * 0.3 + aggregate_density * 0.7)
-        )
+        return clamp(self.cfg.oligomerization_probability_scale * (alpha_density * 0.3 + aggregate_density * 0.7))
 
     def pr_misfolding(self) -> float:
         """Probability that a monomer misfolds during this tick."""
@@ -354,15 +314,8 @@ class AlphaSynuclein(AdaptiveAgent):
             return 0.0
         p = self.last_perception
         oxidative_component = self.cfg.oxidative_misfolding_weight * self._oxidative_pressure(p.oxidative_stress)
-        seeded_component = (
-            self.cfg.aggregate_seeded_misfold_weight
-            * p.local_aggregate_density
-        )
-        return clamp(
-            self.cfg.basal_misfold_probability
-            + oxidative_component
-            + seeded_component
-        )
+        seeded_component = (self.cfg.aggregate_seeded_misfold_weight * p.local_aggregate_density)
+        return clamp(self.cfg.basal_misfold_probability + oxidative_component + seeded_component)
 
     def _oxidative_pressure(self, oxidative_stress: float) -> float:
         """Normalize oxidative stress above the sampled misfolding threshold."""

@@ -4,126 +4,18 @@ from repast4py.space import DiscretePoint
 from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.utils import InternalHabitatMixin, RNG
 from src.simulation.utils.grid import LocalGrid, clamp
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
+from src.simulation.agents.structure import NeuronAction, AdaptiveAgent, NeuronConfig, NeuronInternalConfig, NeuronInternalEffects, NeuronInternalScalars, NeuronPerception, NeuronState, AlphaSynucleinState
 from src.simulation.agents.aggregate_registry import AggregateRegistry
-from src.simulation.agents.alphasynuclein import AlphaSynuclein, AlphaSynucleinState
-from dataclasses import dataclass
+from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
-
-# Internal State Set
-class NeuronState(str, AdaptiveAgentState):
-    """Macro health state of a neuron in the extracellular environment."""
-    HEALTHY = "Healthy"
-    COMPROMISED = "Compromised"
-    APOPTOTIC = "Apoptotic"
-    RUPTURED = "Ruptured"
-
-
-# Action Set
-class NeuronAction(str, AdaptiveAgentAction):
-    """Neuron-level actions applied to the Substantia Nigra environment."""
-    R_DOPAMINE = "release_dopamine"
-    R_ALPHASYNUCLEIN = "release_alphasynuclein"
-    DUMP_DEBRIS = "dump_debris"
-    A_ALPHASYNUCLEIN = "absorb_alphasynuclein"
-    STRESS = "signal_stress"
-    IDLE = "idle"
-
-# Perception
-@dataclass(frozen=True)
-class NeuronPerception(AdaptiveAgentPerception):
-    """Combined extracellular and intracellular state sensed by a neuron."""
-
-    # External Perception
-    position: Optional[DiscretePoint]
-    nearby_alpha: float
-    inflammatory_levels: float
-    extracellular_debris: float
-
-    # Internal Perception
-    oxidative_stress: float
-    intracellular_debris: float
-    energy_demand: float
-
-    # Derived values
-    internal_damage: float
-    alpha_load: float
-
-    # Cumulative damage value
-    cell_damage: float
-
-@dataclass
-class NeuronConfig:
-    """Neuron thresholds, damage weights and extracellular effect rates."""
-    per_radius: int
-    nearby_alpha_high_threshold: float
-    inflammation_high_threshold: float
-    debris_high_threshold: float
-    alpha_load_release_threshold: float
-    damage_accumulation_rate: float
-    damage_recovery_rate: float
-    low_stress_threshold: float
-    inflammation_damage_weight: float
-    debris_damage_weight: float
-    alpha_damage_weight: float
-    compromised_threshold: float
-    apoptotic_threshold: float
-    ruptured_threshold: float
-    dopamine_release_rate: float
-    stress_inflammation_release_rate: float
-    debris_release_rate: float
-    alpha_absorption_rate: float
-    alpha_release_amount: float
-    max_damage_increment_per_tick: float = 1.0
-    apoptotic_internal_damage_threshold: float = 0.0
-    dopamine_factor_healthy: float = 1.0
-    dopamine_factor_compromised: float = 0.6
-    dopamine_factor_apoptotic: float = 0.0
-    dopamine_factor_ruptured: float = 0.0
-    alpha_release_dopamine_fraction: float = 0.35
-    min_ticks_compromised_before_apoptotic: int = 0
-    min_ticks_apoptotic_before_ruptured: int = 0
-    rupture_internal_damage_threshold: float = 0.0
-    rupture_intracellular_debris_threshold: float = 0.0
-
-@dataclass
-class NeuronInternalConfig:
-    """Internal habitat constants for neuronal scalar dynamics."""
-    width: int = 10
-    height: int = 10
-    energy_demand_baseline: float = 0.5
-    energy_demand_recovery_rate: float = 0.02
-    oxidative_stress_decay: float = 0.01
-    intracellular_debris_decay: float = 0.005
-    internal_damage_oxidative_weight: float = 0.4
-    internal_damage_aggregate_weight: float = 0.4
-    internal_damage_debris_weight: float = 0.2
-
-@dataclass
-class NeuronInternalScalars:
-    """Current global intracellular scalar values owned by the neuron."""
-    oxidative_stress: float = 0.0
-    intracellular_debris: float = 0.0
-    energy_demand: float = 0.5
-
-@dataclass
-class NeuronInternalEffects:
-    """Buffered intracellular effects accumulated during one simulation tick."""
-
-    oxidative_stress_added: float = 0.0
-    debris_added: float = 0.0
-    energy_demand_added: float = 0.0
 
 class Neuron(InternalHabitatMixin, AdaptiveAgent):
     """Neuron macro-agent with an intracellular habitat.
-
     The neuron owns a local grid where organelles, alpha-synuclein proteins,
     aggregates and lysosomes interact. It also exposes small buffer APIs used
     by intracellular agents to coordinate deferred work, such as lysosomal
     degradation targets. Aggregate identity and membership are delegated to the
-    environment-level AggregateRegistry.
-    """
-
+    environment-level AggregateRegistry."""
     def __init__(
         self,
         local_id: int,
@@ -132,7 +24,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         config: NeuronConfig,
         alpha_type_id:int,
         internal_config: Optional[NeuronInternalConfig] = None,
-        environment=None,
+        environment=None
     ):
         super().__init__(local_id, type_id, rank)
         # Adaptive agent fields
@@ -888,7 +780,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def aggregate_weight(self, agent: AdaptiveAgent) -> float:
         """Return the contribution of an agent to alpha pathology load."""
-
         if isinstance(agent, AlphaSynuclein) or isinstance(agent, AlphaAggregate):
             return agent.aggregate_weight
         else:
@@ -896,7 +787,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def local_debris_density_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
         """Return local debris-like agent density around a grid position."""
-
         if position is None:
             return 0.0
         points = list(self.grid.neighbor_points(position, radius, include_center))
@@ -919,5 +809,4 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def local_debris_at(self, position: Optional[DiscretePoint] = None, radius: int = 1, include_center: bool = True) -> float:
         """Backward-compatible alias for local_debris_density_at."""
-
         return self.local_debris_density_at(position, radius, include_center)

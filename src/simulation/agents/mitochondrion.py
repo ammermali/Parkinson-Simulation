@@ -1,60 +1,9 @@
 from typing import Optional, TYPE_CHECKING
-from src.simulation.agents.adaptiveagent import AdaptiveAgent, AdaptiveAgentState, AdaptiveAgentAction, AdaptiveAgentPerception
-from dataclasses import dataclass
-from repast4py.space import DiscretePoint
+from src.simulation.agents.structure import MitochondrionState, MitochondrionAction, MitochondrionPerception, MitochondrionConfig, AdaptiveAgent
 from src.simulation.utils import clamp, RNG
 from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
 if TYPE_CHECKING:
     from src.simulation.agents.neuron import Neuron
-
-
-# Internal State Set
-class MitochondrionState(str, AdaptiveAgentState):
-    """Lifecycle state of one intracellular mitochondrion."""
-    HEALTHY = "Healthy"
-    CONSUMED = "Consumed"
-    DAMAGED = "Damaged"
-    DEBRIS = "Debris"
-
-
-# Action Set
-class MitochondrionAction(str, AdaptiveAgentAction):
-    """Operations a mitochondrion can request during its action phase."""
-    REDUCE_DEMAND = "reduce_demand"
-    STRESS = "stress"
-    FUSE = "fuse"
-    DIVIDE = "divide"
-
-@dataclass(frozen=True)
-class MitochondrionPerception(AdaptiveAgentPerception):
-    """Local intracellular context used by mitochondrial state transitions."""
-    position: Optional[DiscretePoint]
-    oxidative_stress: float
-    energy_demand: float
-    local_aggregate_density: float
-    local_debris_density: float
-    target_assigned: bool
-
-@dataclass(frozen=True)
-class MitochondrionConfig:
-    """Parameters for mitochondrial stress, recovery and deficit reduction."""
-    perception_radius: int
-    energy_demand_high_threshold: float
-    oxidative_stress_high_threshold: float
-    oxidative_stress_low_threshold: float
-    aggregate_density_high_threshold: float
-    aggregate_density_low_threshold: float
-    debris_density_high_threshold: float
-    debris_density_low_threshold: float
-    irreversible_damage_threshold: float
-    stress_release_rate: float
-    damage_stress_release_rate: float
-    debris_release_rate: float
-    fusion_stress_reduction_rate: float
-    fusion_debris_reduction_rate: float
-    healthy_energy_demand_reduction_rate: float
-    consumed_energy_demand_reduction_rate: float
-    high_demand_reduction_multiplier: float
 
 class Mitochondrion(AdaptiveAgent):
     """Mitochondrial agent inside a neuron.

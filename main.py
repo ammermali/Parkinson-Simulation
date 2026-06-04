@@ -312,7 +312,7 @@ def command_gif(args: argparse.Namespace) -> int:
 def command_params_list(args: argparse.Namespace) -> int:
     """List YAML parameter files."""
 
-    from src.configuration.param_editing.cli import list_param_files
+    from src.configuration.param_editing import list_param_files
 
     for path in list_param_files(args.param_dir):
         print(path.name)
@@ -322,7 +322,7 @@ def command_params_list(args: argparse.Namespace) -> int:
 def command_params_get(args: argparse.Namespace) -> int:
     """Read a YAML parameter value."""
 
-    from src.configuration.param_editing.cli import get_param_value
+    from src.configuration.param_editing import get_param_value
 
     print(json_payload(get_param_value(args.file, args.key, param_dir=args.param_dir)))
     return 0
@@ -332,7 +332,7 @@ def command_params_set(args: argparse.Namespace) -> int:
     """Set a YAML parameter value."""
 
     import yaml
-    from src.configuration.param_editing.cli import parse_value, resolve_param_file, set_param_value
+    from src.configuration.param_editing import parse_value, resolve_param_file, set_param_value
 
     path = resolve_param_file(args.file, args.param_dir)
     updated = set_param_value(path, args.key, parse_value(args.value), create=args.create, dry_run=args.dry_run)

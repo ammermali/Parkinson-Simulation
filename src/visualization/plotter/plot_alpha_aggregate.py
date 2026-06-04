@@ -9,7 +9,7 @@ if __package__ in (None, ""):
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-from src.visualization.tick_metrics_plotter import plot_alpha_aggregate, run_fixed_plotter
+from src.visualization.plotter.tick_metrics_plotter import plot_alpha_aggregate, run_fixed_plotter
 
 
 if __name__ == "__main__":

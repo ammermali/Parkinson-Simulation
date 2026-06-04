@@ -32,7 +32,7 @@ src/simulation/agents/       Agent classes and biological mechanisms
 src/simulation/logger/       Causal and initialization loggers
 src/simulation/params/       YAML parameter files
 src/simulation/utils/        Params, RNG and config factory utilities
-src/analysis/                Log analysis, G0 lexer and graph builders
+src/analysis/                Log analysis, validation, metrics and graph builders
 src/analysis/schemes/        Multilevel graph contraction schemes
 src/visualization/           Plotters for tick_metrics.csv
 specifics/                  Project notes and specifications
@@ -65,7 +65,8 @@ mpiexec -n 4 python main.py simulate
 ```
 
 The CLI loads `src/simulation/params/system.yaml` by default and delegates to
-the Repast4Py engine. The engine can still be run directly when needed:
+the Repast4Py engine. The engine still exposes a direct module entrypoint for
+debugging, but `main.py` is the canonical suite entrypoint:
 
 ```powershell
 mpiexec -n 4 python src/simulation/engine.py
@@ -262,15 +263,49 @@ Default plot outputs are written to:
 output/plots
 ```
 
+## Central CLI
+
+`main.py` is the primary entrypoint for the full suite:
+
+```powershell
+python main.py --help
+```
+
+Main commands:
+
+```text
+simulate       Run the simulation
+validate-g0    Validate causal trace logs
+validate-init  Validate initialization logs
+mechanisms     Count biological mechanisms from G0 logs
+intervention   Summarize runs for intervention comparison
+plot           Generate tick_metrics.csv plots
+graphs         Export G1/G2 graph levels, optionally G0
+postprocess    Run the standard post-simulation analysis pipeline
+```
+
+After a simulation run, the compact post-processing workflow is:
+
+```powershell
+python main.py postprocess --plots
+```
+
+To include graph exports as well:
+
+```powershell
+python main.py postprocess --plots --graphs
+```
+
 ## Multilevel Graphs
 
 The graph analysis pipeline now supports:
 
 - `G0`: full timed causal trace.
-- `G1`: first contraction level created by `TimeContraption`.
+- `G1`: time contraction created by `TimeContractionScheme`.
+- `G2`: agent/state clustering created by `AgentClusteringScheme`.
 
-`G0` is built from causal node and edge logs. `TimeContraption` contracts time
-while preserving state identity:
+`G0` is built from causal node and edge logs. `TimeContractionScheme` contracts
+time while preserving state identity:
 
 ```text
 AgentNameID_State@t
@@ -294,25 +329,29 @@ G1 superedges summarize repeated interactions with:
 }
 ```
 
-Build and export both G0 and G1:
+Build and export G1 and G2:
 
 ```powershell
 python main.py graphs
 ```
 
+`g0.gexf` can be very large, so it is opt-in:
+
+```powershell
+python main.py graphs --write-g0
+```
+
 Default graph outputs:
 
 ```text
-output/analysis/graphs/g0.gexf
-output/analysis/graphs/g0.graphml
-output/analysis/graphs/g0.json
-output/analysis/graphs/g1_time.gexf
-output/analysis/graphs/g1_time.graphml
-output/analysis/graphs/g1_time.json
+output/analysis/graphs/g1.gexf
+output/analysis/graphs/g2.gexf
+output/analysis/graphs/multilevel_report.md
 ```
 
-GEXF and GraphML are Gephi-ready. JSON is kept for inspection and downstream
-analysis.
+GEXF exports are Gephi-ready. The external `MultilevelGraph` object can also be
+instantiated with `--external-multilevelgraph`, but the default CLI path avoids
+that extra cost on large traces.
 
 For the full multilevel plan, see:
 

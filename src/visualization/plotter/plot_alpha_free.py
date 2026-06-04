@@ -9,8 +9,8 @@ if __package__ in (None, ""):
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-from src.visualization.tick_metrics_plotter import plot_substantia_nigra_metrics, run_fixed_plotter
+from src.visualization.plotter.tick_metrics_plotter import plot_alpha_free, run_fixed_plotter
 
 
 if __name__ == "__main__":
-    run_fixed_plotter(plot_substantia_nigra_metrics)
+    run_fixed_plotter(plot_alpha_free)

@@ -6,11 +6,11 @@ import yaml
 class Params:
     """Small YAML-backed parameter accessor.
 
-    Names without a directory are resolved inside src/simulation/params.
+    Names without a directory are resolved inside src/configuration/param.
     Both bare names such as "neuron" and filenames such as "neuron.yaml" are
     accepted, while explicit absolute or relative paths are honored directly.
     """
-    DEFAULT_DIR = Path(__file__).resolve().parents[1] / "params"
+    DEFAULT_DIR = Path(__file__).resolve().parents[2] / "configuration" / "param"
     def __init__(self, yaml_name: Union[str, Path]):
         self.path = self._resolve_path(yaml_name)
         self.params = self._load()

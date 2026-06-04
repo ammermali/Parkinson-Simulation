@@ -1,6 +1,6 @@
 import json
 
-from src.analysis.mechanism_metrics import summarize_mechanisms
+from src.analysis.metrics.mechanism_metrics import summarize_mechanisms
 
 
 def write_jsonl(path, rows):

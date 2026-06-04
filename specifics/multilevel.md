@@ -1,16 +1,23 @@
-# Multilevel Graphs
+# Multilevel Graph Pipeline
 
-This document describes the current multilevel graph plan for the Parkinson
-simulation. The implementation follows the idea in `specifics/presentation.pdf`:
-G0 is the full temporal causal trace and higher levels are progressively
-contracted abstractions of the same process.
+This document describes the current G0 -> G1 -> G2 graph pipeline.
+`src/analysis/graph/g0_builder.py` is now the only component responsible for
+building G0 from simulation logs.
 
 ## External Library
 
-The library used for the implementation of multilevel graphs is `marco-caputo/multilevel-graphs`, distributed as the
-`multilevelgraphs` Python package. It is based on NetworkX and represents a
-multilevel graph as a base graph plus an ordered sequence of contraction
-schemes. 
+The project targets `marco-caputo/multilevel-graphs`, installed as the
+`multilevelgraphs` Python package. The package builds a `MultilevelGraph` from
+a NetworkX directed graph and an ordered list of contraction schemes.
+
+The local implementation keeps the same conceptual sequence:
+
+```text
+G0 --TimeContractionScheme--> G1 --AgentClusteringScheme--> G2
+```
+
+The schemes are compatible with `multilevelgraphs` when the package is
+available, and they also expose a NetworkX path used for export and tests.
 
 ## Output Location
 
@@ -20,60 +27,68 @@ Graph outputs live in:
 output/analysis/graphs
 ```
 
-The build command exports G0 in Gephi-ready formats:
+The current build command is:
 
 ```powershell
-python src/analysis/build_multilevel_graphs.py --summary
+python main.py graphs
 ```
 
 Default outputs:
 
 ```text
-output/analysis/graphs/g0.gexf
-output/analysis/graphs/g0.graphml
-output/analysis/graphs/g0.json
+output/analysis/graphs/g1.gexf
+output/analysis/graphs/g2.gexf
+output/analysis/graphs/multilevel_report.md
 ```
 
-GEXF and GraphML are intended for Gephi. JSON is kept for inspection and future
-analysis code.
+`g0.gexf` is not rewritten by default because it can be very large. To export it
+in the same pass, add:
+
+```powershell
+--write-g0
+```
 
 ## G0
 
-G0 is the most detailed graph.
+G0 is the full temporal causal graph produced by `g0_builder`.
 
 Each node is one temporally situated entity:
 
 ```text
-AgentNameID_State@Time
-Environment_Field@Time
+AgentNameID_State@Tick
+EnvironmentField@Tick
 ```
 
 Examples:
 
 ```text
-AlphaSynuclein_a:12_Misfolded@34.2
-Neuron_n:3_Compromised@34.2
-SN_dopamine@34.5
-Neuron_n:3_oxidative_stress@34.5
+AlphaSynuclein_19_3_0_Misfolded@34
+Neuron_112_0_0_Compromised@34
+SN_dopamine_output@34
+Neuron_112_0_0_oxidative_stress@34
 ```
 
-G0 edges are typed causal links:
+Agent identities preserve the full runtime UID. In MPI runs that UID commonly
+contains rank/type components such as `local_id:type_id:rank`; G0 and G1 must
+not truncate it, otherwise agents with the same local id on different ranks
+would be merged too early.
 
-- `perception`: an environmental or internal field contributes to an agent
-  decision or transition.
-- `action`: an agent affects an environmental or intracellular field.
-- `transition`: an agent changes state.
-- `agent_relation`: an agent targets or acts on another agent.
-- `aggregation`: alpha-synuclein agents contribute to an aggregate.
-- `continuity`: the same entity continues from one observed moment to the next.
+Action nodes emitted by the runtime logger are collapsed into edge attributes.
+This keeps G0 biological: nodes are agents or fields, while actions are causal
+relations.
 
-Runtime action nodes can be collapsed by `g0_lexer.py`, so an action is stored
-as an edge attribute rather than as a biological node.
+G0 direct agent-agent relations are intentionally narrow:
 
-## G1: TimeContraption
+- `degradation`: `Lysosome -> Target`.
+- `aggregation`: `AlphaSynuclein -> AlphaAggregate`.
 
-`TimeContraption` is the first contraction scheme. It creates G1 by contracting
-time while preserving agent state identity.
+`target_assignment` is not treated as degradation and is not retained as a
+direct agent-agent edge in G0.
+
+## G1: TimeContractionScheme
+
+`TimeContractionScheme` removes temporal repetition while preserving identity
+and state.
 
 The key rule is:
 
@@ -86,92 +101,104 @@ AgentNameID_State@t+1
 Environment fields are contracted similarly:
 
 ```text
-SN_dopamine@t
-SN_dopamine@t+1
-    -> SN_dopamine
+SN_dopamine_output@t
+SN_dopamine_output@t+1
+    -> SN_dopamine_output
 ```
 
-Important consequence: different states are not merged. For example:
+Different states are not merged. For example:
 
 ```text
-AlphaSynuclein_a:12_Monomer
-AlphaSynuclein_a:12_Misfolded
+AlphaSynuclein_19_Monomer
+AlphaSynuclein_19_Misfolded
 ```
 
-remain two different G1 supernodes. The edge between them preserves the state
-transition evidence.
+remain distinct G1 nodes.
 
-## G1 Node Attributes
+### G1 Node Attributes
 
 Each G1 node summarizes the G0 nodes it absorbed:
 
-- `observation_count`: number of temporal observations in G0.
-- `first_seen`: first tick in which the supernode was observed.
-- `last_seen`: last tick in which the supernode was observed.
-- `g0_node_ids`: source G0 node ids.
-- `absorbed_edge_count`: number of G0 edges that became internal to the
-  supernode during contraction.
-- `absorbed_total_effect`: total numeric effect of internal absorbed edges.
-- `absorbed_mean_effect`: mean numeric effect of internal absorbed edges.
-- `absorbed_relations`: relation labels hidden inside the supernode.
+- `observation_count`: number of temporal observations.
+- `first_seen`: first tick observed.
+- `last_seen`: last tick observed.
+- `absorbed_node_count`: number of lower nodes absorbed.
+- `absorbed_edge_count`: number of lower edges absorbed inside the supernode.
+- `original_node_ids`: source G0 node ids.
 
-Internal continuity edges usually end up here.
+### G1 Edge Attributes
 
-## G1 Edge Attributes
-
-If several G0 edges connect the same pair of G1 supernodes, they are compacted
-into one superedge:
+Repeated lower-level edges are compacted into one summary edge:
 
 ```python
-G1_edge = {
+{
     "count": int,
+    "lower_edge_count": int,
     "total_effect": float,
     "mean_effect": float,
+    "mean_of_mean_effect": float,
     "first_seen": int,
     "last_seen": int,
-    "sign": "+" | "-" | "state" | "structural",
+    "sign": "+" | "-" | "state" | "structural" | "mixed",
 }
 ```
 
-Additional attributes are kept for analysis:
+The edge also keeps compact lists of observed `relations`, `mechanisms`,
+`causal_kinds`, `actions`, `outcomes`, and source edge ids.
 
-- `relations`: distinct G0 relation types.
-- `mechanisms`: distinct mechanisms observed on the edge.
-- `causal_kinds`: normalized G0 causal classes.
-- `actions`: collapsed action labels, when available.
-- `g0_edge_ids`: source G0 edge ids.
-- `weight`: equal to `count`, useful for Gephi visualization.
+## G2: AgentClusteringScheme
 
-The compacted `sign` is derived as follows:
+`AgentClusteringScheme` contracts agents with the same class and state by
+dropping the individual id.
 
-- `+` when the total effect is positive.
-- `-` when the total effect is negative.
-- `state` when the edge is a state transition with no numeric effect.
-- `structural` when the edge is causal or temporal but has no numeric direction.
+Example:
+
+```text
+AlphaSynuclein_1_3_0_Misfolded
+AlphaSynuclein_2_3_0_Misfolded
+    -> AlphaSynuclein_Misfolded
+```
+
+Non-agent field nodes remain singleton nodes at this stage. This is deliberate:
+field clustering should be a separate future contraction, because merging all
+neuron-local fields too early would hide local intracellular context.
+
+G2 edges are compacted using the same summary fields as G1. The `label`
+attribute is designed for Gephi and includes the dominant relation, total
+count, and mean effect:
+
+```text
+relation n=<count> mean=<mean_effect>
+```
 
 ## Current Implementation
 
 Relevant files:
 
 ```text
-src/analysis/g0_lexer.py
+src/analysis/graph/g0_builder.py
+src/analysis/graph/multilevel_builder.py
 src/analysis/schemes/time_contractionscheme.py
-src/analysis/build_multilevel_graphs.py
+src/analysis/schemes/agent_clustering_scheme.py
+src/analysis/schemes/contraction_utils.py
 ```
 
-`g0_lexer.py` builds G0 from `g0_nodes` and `g0_edges`.
-`time_contractionscheme.py` defines `TimeContraption`.
-`build_multilevel_graphs.py` exports G0 and G1 together.
+Current generated levels from the latest logs:
+
+```text
+G0: 264269 nodes, 372093 edges
+G1: 4071 nodes, 5971 edges
+G2: 414 nodes, 343 edges
+```
 
 ## Future Levels
 
 The intended hierarchy is:
 
 - `G0`: full temporal causal trace.
-- `G1`: time-contracted graph.
-- `G2`: agent/mechanism-clustered graph.
-- `G3`: motif or process graph.
+- `G1`: time-contracted entity-state graph.
+- `G2`: agent class/state clustered graph.
+- `G3`: process, mechanism, or motif graph.
 
-G1 is intentionally conservative: it removes repeated time observations but does
-not merge biological states, mechanisms, or agent classes. This keeps enough
-detail for later contractions to choose biologically meaningful abstractions.
+G1 and G2 are conservative enough to preserve causal interpretability while
+reducing temporal and agent-level redundancy.

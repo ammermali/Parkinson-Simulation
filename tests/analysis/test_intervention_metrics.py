@@ -1,6 +1,6 @@
 import json
 
-from src.analysis.intervention_metrics import summarize_run
+from src.analysis.metrics.intervention_metrics import summarize_run
 
 
 def write_jsonl(path, rows):

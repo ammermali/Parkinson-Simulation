@@ -8,7 +8,6 @@ from pathlib import Path
 DEFAULT_SIMULATION_LOG_DIR = Path("output/simulation/logs")
 DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/initialization_validation_latest.json")
 
-
 def load_jsonl(path: Path) -> tuple[list[dict], dict]:
     stats = {"valid": 0, "malformed": 0, "blank": 0, "examples": []}
     rows: list[dict] = []

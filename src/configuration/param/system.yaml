@@ -2,7 +2,7 @@ stop.at: 500
 random.seed: 42
 
 external.population:
-  neurons: 20
+  neurons: 21
   microglia: 15
   astrocytes: 15
   alpha: 0

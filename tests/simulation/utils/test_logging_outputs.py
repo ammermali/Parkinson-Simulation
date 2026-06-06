@@ -1,61 +1,55 @@
 import json
 from types import SimpleNamespace
 
-from src.simulation.logger.causal_trace_logger import CausalTraceLogger
+from src.simulation.logger.event_logger import EventLogger
 from src.simulation.logger.initialization_logger import InitializationLogger
+from src.simulation.logger.snapshot_logger import SnapshotLogger
 
 
-class TestCausalTraceLogger:
-    def test_writes_json_nodes_edges_and_metadata_without_positions(self, tmp_path):
-        logger = CausalTraceLogger(
-            run_id="test_run",
-            rank=0,
-            output_dir=tmp_path,
-            enabled=True,
-            agent_type_map={1: "Microglia"},
-            params={"random.seed": 1}
-        )
-        logger.set_tick(4)
-        microglia = SimpleNamespace(uid=(3, 1, 0), ptype=1, state="Activated")
-        source = logger.env_field_node("SN.inflammation_level", "inflammation_level", "1_perception", 0.9)
-        logger.threshold_trigger(
-            source,
-            microglia,
-            "Activated",
-            "microglia_activation_by_inflammation",
-            "MICROGLIA_ACTIVATION_INFLAMMATION_HIGH",
-            "inflammation_level >= inflammation_high_threshold"
-        )
+class TestEventLogger:
+    def test_writes_semantic_events_without_legacy_g0_files(self, tmp_path):
+        logger = EventLogger(run_id="test_run", rank=0, output_dir=tmp_path, enabled=True)
+        logger.set_tick(7)
+        agent = SimpleNamespace(uid=(3, 1, 0), state="Supportive")
+        target = SimpleNamespace(uid=(4, 2, 0), state="Misfolded")
+        logger.action_selection(agent, "support", "astrocyte_state_action_policy")
+        logger.field_effect(agent, "support", "inflammation_level", -0.05, "astrocyte_support")
+        logger.target_assignment(agent, target, "legacy_target_assignment")
+        logger.buffer_commit("inflammation_removed", "inflammation_level", -0.05, "legacy_commit")
         logger.close()
-        edge = json.loads((tmp_path / "g0_edges.jsonl").read_text(encoding="utf-8").splitlines()[0])
-        metadata = json.loads((tmp_path / "run_metadata.json").read_text(encoding="utf-8"))
-        assert (tmp_path / "g0_edges_rank0.jsonl").exists()
-        assert (tmp_path / "g0_nodes_rank0.jsonl").exists()
-        assert edge["relation"] == "threshold_trigger"
-        assert edge["source_node_id"]
-        assert edge["target_node_id"]
-        assert edge["g1_source_key"]
-        assert edge["g2_target_key"] == "SimpleNamespace.Activated"
-        assert "position" not in edge
-        assert metadata["logger_schema_version"] == "2.0-json"
+        events = [
+            json.loads(line)
+            for line in (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        assert [event["event_type"] for event in events] == ["action_selected", "field_change"]
+        assert events[1]["effects"][0]["field"] == "inflammation_level"
+        assert not (tmp_path / "g0_nodes.jsonl").exists()
+        assert not (tmp_path / "g0_edges.jsonl").exists()
 
-    def test_aggregate_snapshot_uses_owner_and_aggregate_identity(self, tmp_path):
-        logger = CausalTraceLogger(run_id="test_run", rank=0, output_dir=tmp_path, enabled=True)
-        owner = SimpleNamespace(uid=(10, 0, 0))
-        aggregate = SimpleNamespace(uid=(1, 3, 0), aggregate_id=1, state="LewyBody", size=4)
 
-        logger.aggregate_snapshot(aggregate, aggregate_id=1, owner=owner)
+class TestSnapshotLogger:
+    def test_writes_spatial_snapshots_with_run_identity(self, tmp_path):
+        logger = SnapshotLogger(run_id="test_run", rank=0, output_dir=tmp_path, enabled=True)
+        owner = SimpleNamespace(uid=(1, 0, 0))
+        agent = SimpleNamespace(
+            uid=(4, 3, 0),
+            state="LewyBody",
+            compartment="Intracellular",
+            owner_neuron=owner,
+            aggregate_id=8
+        )
+        logger.record_agent(3, agent, SimpleNamespace(x=2, y=5, z=0))
         logger.close()
 
-        node = json.loads((tmp_path / "g0_nodes.jsonl").read_text(encoding="utf-8").splitlines()[0])
-        assert node["uid"] == "10:0:0::Aggregate_1"
-        assert node["owner_uid"] == "10:0:0"
-        assert node["value"] == 4
-
+        row = json.loads((tmp_path / "spatial_snapshots.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        assert row["run_id"] == "test_run"
+        assert row["uid"] == "4:3:0"
+        assert row["owner_uid"] == "1:0:0"
+        assert row["aggregate_id"] == 8
 
 class TestInitializationLogger:
     def test_writes_full_initial_agent_record_and_manifest(self, tmp_path):
-        logger = InitializationLogger(run_id="test_run", rank=0, output_dir=tmp_path, enabled=True)
+        logger = InitializationLogger(rank=0, output_dir=tmp_path, enabled=True)
         point = SimpleNamespace(x=2, y=3, z=0)
         agent = SimpleNamespace(
             uid=(4, 1, 0),

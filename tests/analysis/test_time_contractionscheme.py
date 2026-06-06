@@ -4,6 +4,7 @@ nx = pytest.importorskip("networkx")
 
 from src.analysis.schemes.agent_clustering_scheme import AgentClusteringScheme
 from src.analysis.schemes.time_contractionscheme import TimeContractionScheme
+from src.analysis.schemes.topological_scc_scheme import TopologicalSCCContractionScheme
 
 
 def agent_node(uid, state, tick):
@@ -168,3 +169,27 @@ class TestAgentClusteringScheme:
 
         assert set(g2.nodes) == {"Neuron_internal_environment"}
         assert g2.nodes["Neuron_internal_environment"]["member_count"] == 2
+
+
+class TestTopologicalSCCContractionScheme:
+    def test_contracts_strongly_connected_feedback_patterns(self):
+        g2 = nx.DiGraph(level="G2")
+        g2.add_node("SN_inflammation_level", semantic_kind="environment_field", agent_type="SubstantiaNigra", uid="SN", field="inflammation_level")
+        g2.add_node("Microglia_Activated", semantic_kind="agent_state", agent_type="Microglia", state="Activated")
+        g2.add_node("Neuron_Compromised", semantic_kind="agent_state", agent_type="Neuron", state="Compromised")
+        g2.add_edge("SN_inflammation_level", "Microglia_Activated", relation="threshold_trigger", causal_kind="perception", count=4, total_effect=0.8, mean_effect=0.2)
+        g2.add_edge("Microglia_Activated", "SN_inflammation_level", relation="field_effect", causal_kind="action", count=3, total_effect=0.6, mean_effect=0.2)
+        g2.add_edge("SN_inflammation_level", "Neuron_Compromised", relation="threshold_trigger", causal_kind="perception", count=2, total_effect=0.3, mean_effect=0.15)
+
+        g3 = TopologicalSCCContractionScheme().contract(g2)
+        feedback_nodes = [
+            attrs
+            for _, attrs in g3.nodes(data=True)
+            if attrs.get("pattern_kind") == "feedback_component"
+        ]
+
+        assert len(feedback_nodes) == 1
+        assert feedback_nodes[0]["component_size"] == 2
+        assert feedback_nodes[0]["internal_event_count"] == 7
+        assert feedback_nodes[0]["is_feedback_pattern"] is True
+        assert any(attrs.get("pattern_kind") == "singleton_process" for _, attrs in g3.nodes(data=True))

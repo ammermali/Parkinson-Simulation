@@ -1,8 +1,7 @@
 import pytest
 from typing import Optional
 from repast4py.space import DiscretePoint
-
-from testhelpers import TestAgent, TestRng, import_any, make_lysosome_config, make_mitochondrion_config
+from tests.simulation.testhelpers import TestAgent, TestRng, import_any, make_lysosome_config, make_mitochondrion_config
 
 mitochondrion_module = import_any("src.simulation.agents.mitochondrion")
 Mitochondrion = mitochondrion_module.Mitochondrion

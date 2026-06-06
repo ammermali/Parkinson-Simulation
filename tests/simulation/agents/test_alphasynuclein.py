@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from testhelpers import TestRng, import_any
+from tests.simulation.testhelpers import TestRng, import_any
 
 
 alpha_module = import_any("src.simulation.agents.alphasynuclein")

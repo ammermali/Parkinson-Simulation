@@ -2,7 +2,7 @@ import pytest
 from dataclasses import replace
 from types import SimpleNamespace
 from repast4py.space import DiscretePoint
-from testhelpers import TestAgent, TestRng, import_any, make_alpha_config, make_lysosome_config, make_mitochondrion_config
+from tests.simulation.testhelpers import TestAgent, TestRng, import_any, make_alpha_config, make_lysosome_config, make_mitochondrion_config
 
 alpha_module = import_any("src.simulation.agents.alphasynuclein")
 AlphaSynuclein = alpha_module.AlphaSynuclein

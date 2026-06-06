@@ -461,10 +461,12 @@ class TestParkinsonModel:
                 "scalar_stdout": False
             }}
         model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+        assert model.event_logger is model.causal_logger
         assert model.causal_logger.enabled is True
         assert model.initialization_logger.enabled is True
-        assert model.causal_logger.output_dir == tmp_path
-        assert model.initialization_logger.output_dir == tmp_path
+        assert model.causal_logger.output_dir == tmp_path / "run_logs"
+        assert model.causal_logger.rank_output_dir == tmp_path / "logs_per_rank"
+        assert model.initialization_logger.output_dir == tmp_path / "initialization_logs"
 
     def test_tick_metrics_csv_records_one_global_row_per_tick(self, engine_module, tmp_path):
         params = {
@@ -483,7 +485,7 @@ class TestParkinsonModel:
 
         model.step()
 
-        rows = (tmp_path / "tick_metrics.csv").read_text(encoding="utf-8").splitlines()
+        rows = (tmp_path / "metrics" / "tick_metrics.csv").read_text(encoding="utf-8").splitlines()
         assert rows[0] == "tick,debris,inflammation,dopamine,neurons_healthy,neurons_compromised,neurons_apoptotic,neurons_ruptures,free_alpha,alpha_aggregate"
         assert rows[1].startswith("1,")
         assert rows[1].endswith(",0,0,0,0,0,0")
@@ -843,23 +845,33 @@ class TestParkinsonModel:
         assert metrics["neurons.blocks.min_ticks_compromised"] == 3
         assert metrics["neurons.blocks.apoptotic_internal_damage_threshold"] == 2
 
-    def test_step_records_g0_field_nodes_when_causal_logging_is_enabled(self, engine_module, tmp_path):
+    def test_step_records_canonical_events_and_snapshots_when_logging_is_enabled(self, engine_module, tmp_path):
         params = {
-            "stop.at": 2,
+            "stop.at": 1,
             "random.seed": 21,
             "world": {"width": 4, "height": 4, "buffer_size": 1},
-            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 1, "alpha": 0},
             "logging": {
                 "enabled": True,
                 "output_dir": str(tmp_path),
-                "scalar_stdout": False}}
+                "scalar_stdout": False,
+                "progress_stdout": False,
+                "summary_stdout": False,
+            }}
         model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
-        model.step()
-        rows = (tmp_path / "g0_nodes.jsonl").read_text(encoding="utf-8").splitlines()
-        assert any('"field": "extracellular_debris"' in row for row in rows)
-        assert (tmp_path / "run_metadata.json").exists()
+        with pytest.raises(engine_module.SimulationCompleted):
+            model.step()
 
-    def test_initial_alpha_agents_are_recorded_as_g0_baseline_nodes(self, engine_module, tmp_path):
+        events = (tmp_path / "run_logs" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        snapshots = (tmp_path / "run_logs" / "spatial_snapshots.jsonl").read_text(encoding="utf-8").splitlines()
+        assert any('"event_type": "action_selected"' in row for row in events)
+        assert any('"event_type": "field_change"' in row for row in events)
+        assert any('"agent_class": "Astrocyte"' in row for row in snapshots)
+        assert not (tmp_path / "run_logs" / "g0_nodes.jsonl").exists()
+        assert not (tmp_path / "run_logs" / "g0_edges.jsonl").exists()
+        assert (tmp_path / "run_logs" / "event_log_metadata.json").exists()
+
+    def test_initial_alpha_agents_are_recorded_in_initialization_log(self, engine_module, tmp_path):
         params = {
             "stop.at": 2,
             "random.seed": 21,
@@ -873,13 +885,14 @@ class TestParkinsonModel:
 
         engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
 
-        rows = (tmp_path / "g0_nodes_rank0.jsonl").read_text(encoding="utf-8").splitlines()
+        rows = (tmp_path / "initialization_logs" / "initialization_agents.jsonl").read_text(encoding="utf-8").splitlines()
         alpha_rows = [
             row
             for row in rows
-            if '"agent_type": "AlphaSynuclein"' in row and '"tick": 0' in row
+            if '"agent_class": "AlphaSynuclein"' in row
         ]
         assert len(alpha_rows) == 3
+        assert not (tmp_path / "logs_per_rank" / "g0_nodes_rank0.jsonl").exists()
 
     def test_max_possible_dopamine_uses_initial_capacity_even_after_neuron_loss(self, engine_module):
         neuron_module = importlib.import_module("src.simulation.agents.neuron")

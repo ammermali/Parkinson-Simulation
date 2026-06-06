@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 from repast4py.space import DiscretePoint
-
-from testhelpers import TestRng, import_any, make_alpha_config
+from tests.simulation.testhelpers import TestRng, import_any, make_alpha_config
 
 
 alpha_module = import_any("src.simulation.agents.alphasynuclein")

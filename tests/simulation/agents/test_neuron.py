@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import pytest
 from repast4py.space import DiscretePoint
-from testhelpers import TestAgent, TestRng, TestSubstantiaNigraLikeEnvironment, import_any
+from tests.simulation.testhelpers import TestAgent, TestRng, TestSubstantiaNigraLikeEnvironment, import_any
 
 
 neuron_module = import_any("src.simulation.agents.neuron", "neuron")

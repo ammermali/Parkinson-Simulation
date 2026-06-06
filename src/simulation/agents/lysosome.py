@@ -4,7 +4,7 @@ from src.simulation.agents.structure import LysosomeState, AggregateState, Lysos
 from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from src.simulation.agents.mitochondrion import Mitochondrion
 from src.simulation.utils import clamp, RNG
-from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from
 
 class Lysosome(AdaptiveAgent):
     """Intracellular degradation agent coordinated by neuron target buffers.
@@ -58,7 +58,7 @@ class Lysosome(AdaptiveAgent):
     def see(self, model) -> LysosomePerception:
         """Read the current assignment and pressure in the owning neuron."""
 
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         habitat = self.owner_neuron
         position = habitat.position_of(self)
         task = habitat.target_for(self)
@@ -110,7 +110,7 @@ class Lysosome(AdaptiveAgent):
         elif self.state == LysosomeState.OVERWHELMED:
             self.state = LysosomeState.OVERWHELMED
         self.last_transition = (old_state, self.state)
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None and old_state != self.state:
             logger.state_transition(
                 self,
@@ -133,7 +133,7 @@ class Lysosome(AdaptiveAgent):
                 self.pending_action = LysosomeAction.DEGRADE
         elif self.state == LysosomeState.OVERWHELMED:
             self.pending_action = LysosomeAction.IDLE
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None and self.pending_action is not None:
             logger.action_selection(
                 self,
@@ -225,15 +225,6 @@ class Lysosome(AdaptiveAgent):
         target = self.rng.choice(targets)
         if habitat.assign_degradation_target(self, target):
             self.target = target
-            logger = causal_logger_from(self)
-            if logger is not None:
-                logger.target_assignment(
-                    self,
-                    target,
-                    "lysosome_selects_degradation_target",
-                    rule_id="LYSOSOME_TARGET_ASSIGNMENT",
-                    owner=self.owner_neuron
-                )
 
     def _degrade_target(self, habitat):
         """Attempt to degrade the assigned target.
@@ -297,7 +288,7 @@ class Lysosome(AdaptiveAgent):
         else:
             habitat.remove_agent(target)
             outcome = "target_removed"
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.degradation(
                 self,
@@ -314,7 +305,7 @@ class Lysosome(AdaptiveAgent):
     def _fail_degradation(self, habitat, target: AdaptiveAgent):
         """Return a failed target to the neuron's available target pool."""
         habitat.clear_degradation_assignment(self, requeue_target=True)
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.degradation(
                 self,
@@ -404,7 +395,7 @@ class Lysosome(AdaptiveAgent):
         self.target = None
         self._reset_degradation_work()
         habitat.clear_degradation_assignment(self, requeue_target=True)
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.degradation(
                 self,

@@ -1,7 +1,7 @@
 from typing import Optional, TYPE_CHECKING
 from src.simulation.agents.structure import MitochondrionState, MitochondrionAction, MitochondrionPerception, MitochondrionConfig, AdaptiveAgent
 from src.simulation.utils import clamp, RNG
-from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from
 if TYPE_CHECKING:
     from src.simulation.agents.neuron import Neuron
 
@@ -27,7 +27,7 @@ class Mitochondrion(AdaptiveAgent):
 
     def see(self, model) -> MitochondrionPerception:
         """Read neuron-level stress, energy demand and degradation assignment."""
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         habitat = self.owner_neuron
         position = habitat.position_of(self)
         if position is None:
@@ -95,7 +95,7 @@ class Mitochondrion(AdaptiveAgent):
             self.state = MitochondrionState.DEBRIS
 
         self.last_transition = (old_state, self.state)
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None and old_state != self.state:
             logger.state_transition(
                 self,
@@ -130,7 +130,7 @@ class Mitochondrion(AdaptiveAgent):
                 self.pending_action = MitochondrionAction.STRESS
             else:
                 self.pending_action = MitochondrionAction.REDUCE_DEMAND
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None and self.pending_action is not None:
             logger.action_selection(
                 self,
@@ -151,27 +151,25 @@ class Mitochondrion(AdaptiveAgent):
         if self.pending_action == MitochondrionAction.REDUCE_DEMAND:
             reduction = self.energy_demand_reduction()
             habitat.add_energy_demand(-reduction)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.internal_field_effect(
                     self,
                     self.owner_neuron,
                     "energy_demand",
                     -reduction,
-                    "negative",
                     "mitochondrion_energy_demand_reduction",
                     action=self.pending_action
                 )
         elif self.pending_action == MitochondrionAction.STRESS:
             habitat.add_oxidative_stress(self.cfg.stress_release_rate)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.internal_field_effect(
                     self,
                     self.owner_neuron,
                     "oxidative_stress",
                     self.cfg.stress_release_rate,
-                    "positive",
                     "mitochondrion_stress_release",
                     action=self.pending_action
                 )
@@ -184,7 +182,6 @@ class Mitochondrion(AdaptiveAgent):
                         self.owner_neuron,
                         "energy_demand",
                         -reduction,
-                        "negative",
                         "consumed_mitochondrion_partial_demand_reduction",
                         action=self.pending_action
                     )
@@ -193,14 +190,13 @@ class Mitochondrion(AdaptiveAgent):
             habitat.add_oxidative_stress(-self.cfg.fusion_stress_reduction_rate)
             self._add_intracellular_debris(habitat, -self.cfg.fusion_debris_reduction_rate)
             self.state = MitochondrionState.HEALTHY
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.internal_field_effect(
                     self,
                     self.owner_neuron,
                     "oxidative_stress",
                     -self.cfg.fusion_stress_reduction_rate,
-                    "negative",
                     "mitochondrion_fusion_stress_reduction",
                     action=self.pending_action
                 )
@@ -209,7 +205,6 @@ class Mitochondrion(AdaptiveAgent):
                     self.owner_neuron,
                     "intracellular_debris",
                     -self.cfg.fusion_debris_reduction_rate,
-                    "negative",
                     "mitochondrion_fusion_debris_reduction",
                     action=self.pending_action
                 )
@@ -225,14 +220,13 @@ class Mitochondrion(AdaptiveAgent):
             habitat.add_oxidative_stress(self.cfg.damage_stress_release_rate)
             self._add_intracellular_debris(habitat, self.cfg.debris_release_rate)
             self._register_if_degradable(habitat)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.internal_field_effect(
                     self,
                     self.owner_neuron,
                     "oxidative_stress",
                     self.cfg.damage_stress_release_rate,
-                    "positive",
                     "damaged_mitochondrion_stress_release",
                     action=self.pending_action
                 )
@@ -241,7 +235,6 @@ class Mitochondrion(AdaptiveAgent):
                     self.owner_neuron,
                     "intracellular_debris",
                     self.cfg.debris_release_rate,
-                    "positive",
                     "damaged_mitochondrion_debris_release",
                     action=self.pending_action
                 )
@@ -344,7 +337,7 @@ class Mitochondrion(AdaptiveAgent):
         self.state = MitochondrionState.HEALTHY
         self.pending_action = None
         self.last_transition = (old_state, self.state)
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.state_transition(
                 self,

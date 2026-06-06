@@ -387,7 +387,7 @@ def _event_as_metric_edge(event: dict) -> dict:
         "probability": stochastic.get("probability"),
         "rng_value": stochastic.get("rng_value"),
         "effect_value": effect.get("delta"),
-        "rule_id": event.get("rule_id"),
+        "rule_id": event.get("rule_id") or (event.get("context") or {}).get("rule_id"),
     }
 
 

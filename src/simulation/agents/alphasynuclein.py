@@ -3,7 +3,7 @@ from typing import Optional
 from src.simulation.agents.structure import AlphaSynucleinState, AlphaSynucleinPerception, AlphaSynucleinAction, AlphaSynucleinConfig, AdaptiveAgent
 from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.utils import RNG, clamp
-from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from, uid_of
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from, uid_of
 
 class AlphaSynucleinCompartment(str, Enum):
     """The habitat where the protein currently exists."""
@@ -56,7 +56,7 @@ class AlphaSynuclein(AdaptiveAgent):
 
     def see(self, model) -> AlphaSynucleinPerception:
         """Read local stress and nearby agents from the current habitat."""
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         habitat = self._habitat(model)
         position = habitat.position_of(self)
         if self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
@@ -116,7 +116,7 @@ class AlphaSynuclein(AdaptiveAgent):
             if draw < probability:
                 self.state = AlphaSynucleinState.MISFOLDED
                 self.misfolded_ticks = 0
-                logger = causal_logger_from(self)
+                logger = event_logger_from(self)
                 if logger is not None:
                     source = logger.internal_field_node(
                         self.owner_neuron,
@@ -152,7 +152,7 @@ class AlphaSynuclein(AdaptiveAgent):
                 probability = self.pr_oligomerization()
             self.wants_oligomerization = draw < probability
             if self.wants_oligomerization:
-                logger = causal_logger_from(self)
+                logger = event_logger_from(self)
                 if logger is not None:
                     source = logger.internal_field_node(
                         self.owner_neuron,
@@ -183,7 +183,12 @@ class AlphaSynuclein(AdaptiveAgent):
         return self.state
 
     def action(self) -> AlphaSynucleinAction:
-        """Free proteins move; cleared or already aggregated proteins stay."""
+        """Choose intracellular free-protein movement.
+
+        Extracellular proteins are moved by ParkinsonModel's extracellular
+        drift pass so released proteins can move even when they are not part of
+        the Repast context iteration.
+        """
         if not self.is_free or self.compartment == AlphaSynucleinCompartment.EXTRACELLULAR:
             self.pending_action = AlphaSynucleinAction.STAY
         else:
@@ -238,7 +243,7 @@ class AlphaSynuclein(AdaptiveAgent):
         self.misfolded_ticks = 0
 
     def release_to_environment(self):
-        """Freeze this protein as extracellular pathology."""
+        """Mark this protein as extracellular mobile pathology."""
         self.compartment = AlphaSynucleinCompartment.EXTRACELLULAR
         self.owner_neuron = None
         self.pending_action = AlphaSynucleinAction.STAY

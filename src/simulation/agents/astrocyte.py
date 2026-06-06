@@ -1,7 +1,7 @@
 from typing import Optional
 from src.simulation.agents.structure import AstrocyteState, AstrocytePerception, AstrocyteAction, AstrocyteConfig, AdaptiveAgent
 from src.simulation.utils import RNG, clamp
-from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from
 
 class Astrocyte(AdaptiveAgent):
     """Extracellular support agent that dampens or amplifies inflammation."""
@@ -17,7 +17,7 @@ class Astrocyte(AdaptiveAgent):
 
     def see(self, model) -> AstrocytePerception:
         """Read extracellular inflammatory and debris state."""
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         env = model.environment
         position = env.position_of(self)
         perception = AstrocytePerception(
@@ -71,7 +71,7 @@ class Astrocyte(AdaptiveAgent):
             if low_environment and draw < probability:
                 self.state = AstrocyteState.SUPPORTIVE
         if old_state != self.state:
-            self._log_causal_state_trigger(old_state, p)
+            self._log_event_state_trigger(old_state, p)
         return self.state
 
     def action(self) -> AstrocyteAction:
@@ -89,7 +89,7 @@ class Astrocyte(AdaptiveAgent):
                 self.pending_action = AstrocyteAction.INFLAMMATION
             else:
                 self.pending_action = AstrocyteAction.SUPPORT
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.action_selection(self, self.pending_action, "astrocyte_state_action_policy")
         return self.pending_action
@@ -101,27 +101,25 @@ class Astrocyte(AdaptiveAgent):
         env = model.environment
         if self.pending_action == AstrocyteAction.SUPPORT:
             env.remove_inflammation(self.cfg.support_inflammation_reduction_rate)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "inflammation_level",
                     -self.cfg.support_inflammation_reduction_rate,
-                    "negative",
                     "astrocyte_support_inflammation_reduction"
                 )
         elif self.pending_action == AstrocyteAction.INFLAMMATION:
             amount = self._inflammation_release_amount()
             env.add_inflammation(amount)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "inflammation_level",
                     amount,
-                    "positive",
                     "astrocyte_reactive_inflammation_release"
                 )
 
@@ -132,10 +130,10 @@ class Astrocyte(AdaptiveAgent):
         self.action()
         self.do(model)
 
-    def _log_causal_state_trigger(self, old_state: AstrocyteState, p: AstrocytePerception) -> None:
-        """Log only causal predicates that produced an astrocyte transition."""
+    def _log_event_state_trigger(self, old_state: AstrocyteState, p: AstrocytePerception) -> None:
+        """Log only event predicates that produced an astrocyte transition."""
 
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is None:
             return
         if self.state == AstrocyteState.REACTIVE:

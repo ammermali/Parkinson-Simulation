@@ -1,7 +1,7 @@
 from typing import Optional
 from src.simulation.agents.structure import MicrogliaConfig, MicrogliaAction, MicrogliaState, MicrogliaPerception, AdaptiveAgent
 from src.simulation.utils import RNG, clamp
-from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from
 
 class Microglia(AdaptiveAgent):
     """Extracellular immune agent that clears debris or amplifies inflammation."""
@@ -18,7 +18,7 @@ class Microglia(AdaptiveAgent):
     def see(self, model) -> MicrogliaPerception:
         """Read extracellular debris, inflammation and nearby alpha density."""
 
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         env = model.environment
         position = env.position_of(self)
         if position is None:
@@ -86,7 +86,7 @@ class Microglia(AdaptiveAgent):
                 ):
                     self.state = MicrogliaState.RESTING
         if old_state != self.state:
-            self._log_causal_state_trigger(old_state, p)
+            self._log_event_state_trigger(old_state, p)
         return self.state
 
     def action(self) -> MicrogliaAction:
@@ -100,7 +100,7 @@ class Microglia(AdaptiveAgent):
                 self.pending_action = MicrogliaAction.INFLAMMATION
             else:
                 self.pending_action = MicrogliaAction.SCAN
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.action_selection(self, self.pending_action, "microglia_state_action_policy")
         return self.pending_action
@@ -127,26 +127,24 @@ class Microglia(AdaptiveAgent):
 
         if action == MicrogliaAction.CLEAR_DEBRIS:
             env.remove_debris(self.cfg.debris_clearance_rate)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     action,
                     "extracellular_debris",
                     -self.cfg.debris_clearance_rate,
-                    "negative",
                     "microglia_debris_clearance"
                 )
         elif action == MicrogliaAction.INFLAMMATION:
             env.add_inflammation(self.cfg.inflammation_release_rate)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     action,
                     "inflammation_level",
                     self.cfg.inflammation_release_rate,
-                    "positive",
                     "microglia_inflammation_release"
                 )
 
@@ -157,10 +155,10 @@ class Microglia(AdaptiveAgent):
         self.action()
         self.do(model)
 
-    def _log_causal_state_trigger(self, old_state: MicrogliaState, p: MicrogliaPerception) -> None:
-        """Log only causal predicates that produced a microglia transition."""
+    def _log_event_state_trigger(self, old_state: MicrogliaState, p: MicrogliaPerception) -> None:
+        """Log only event predicates that produced a microglia transition."""
 
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is None:
             return
         if self.state == MicrogliaState.CLEARING:

@@ -24,7 +24,7 @@ class Event:
     context: dict[str, Any]
 
 class EventLogger:
-    def __init__(self, rank: int, comm=None, output_dir: Path | str = "output/run_logs", rank_output_dir: Path | str | None = None,  enabled: bool = False, model_version: Optional[str] = None):
+    def __init__(self, rank: int, comm=None, output_dir: Path | str = "output/run_logs", rank_output_dir: Path | str | None = None, enabled: bool = False, model_version: Optional[str] = None, run_id: Optional[str] = None):
         self.rank = rank
         self.comm = comm
         self.output_dir = Path(output_dir)
@@ -54,7 +54,6 @@ class EventLogger:
         from_state: Any,
         to_state: Any,
         mechanism: str,
-        rule_id: Optional[str] = None,
         probability: Optional[float] = None,
         rng_value: Optional[float] = None,
         outcome: Optional[str] = "transitioned",
@@ -77,17 +76,15 @@ class EventLogger:
         target_agent,
         target_state: Any,
         mechanism: str,
-        predicate: Optional[str] = None,
         owner=None,
-        compartment=None,
+        compartment=None
     ) -> None:
         self.record_event(
             event_type="threshold_trigger",
             mechanism=mechanism,
             actor=field_ref(source),
             target=agent_ref(target_agent, state_after=target_state, owner=owner, compartment=compartment),
-            outcome="triggered",
-            context=compact_dict({"predicate": predicate}),
+            outcome="triggered"
         )
 
     def field_effect(
@@ -307,6 +304,18 @@ def agent_ref(agent, *, state: Any = None, state_before: Any = None, state_after
 def field_ref(source) -> Optional[dict[str, Any]]:
     if source is None:
         return None
+    if isinstance(source, dict):
+        return compact_dict(
+            {
+                "uid": source.get("uid"),
+                "type": source.get("type"),
+                "field": canonical_field_name(source.get("field")),
+                "value": source.get("value"),
+                "scope": source.get("scope"),
+                "owner_uid": source.get("owner_uid"),
+                "compartment": source.get("compartment")
+            }
+        )
     return compact_dict(
         {
             "uid": getattr(source, "uid", None),

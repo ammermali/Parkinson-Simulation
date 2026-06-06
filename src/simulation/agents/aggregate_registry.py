@@ -3,8 +3,8 @@ from repast4py.space import DiscretePoint
 from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.agents.alphasynuclein import AlphaSynuclein
 from src.simulation.agents.structure import AggregateState, AlphaSynucleinState, AdaptiveAgent
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from
 from src.simulation.utils import RNG, clamp
-from src.simulation.logger.causal_trace_logger import causal_logger_from
 
 class AggregateInvariantError(RuntimeError):
     """Aggregate registry consistency error."""
@@ -38,7 +38,7 @@ class AggregateRegistry:
                 if isinstance(agent, AlphaAggregate)
             ]
             for aggregate in aggregates:
-                aggregate.causal_logger = getattr(habitat, "causal_logger", None)
+                bind_event_logger(aggregate, habitat)
             self._process_cell(habitat, point, free_candidates, aggregates)
         self.prune_cleared_aggregates(habitat)
         self.validate_invariants(habitat)
@@ -171,7 +171,7 @@ class AggregateRegistry:
             state=state,
             owner_neuron=habitat
         )
-        aggregate.causal_logger = getattr(habitat, "causal_logger", None)
+        bind_event_logger(aggregate, habitat)
         self._aggregates[aggregate_id] = aggregate
         self._members[aggregate_id] = set()
         habitat.add_agent(aggregate, point)
@@ -201,7 +201,7 @@ class AggregateRegistry:
             else AlphaSynucleinState.OLIGOMER
         )
         alpha.join_aggregate(aggregate.aggregate_id, member_state)
-        logger = causal_logger_from(habitat)
+        logger = event_logger_from(habitat)
         if logger is not None:
             logger.aggregation(
                 alpha,
@@ -248,7 +248,7 @@ class AggregateRegistry:
         source.member_agents.clear()
         source.owner_neuron = None
         self._register_degradation_target(habitat, target)
-        logger = causal_logger_from(habitat)
+        logger = event_logger_from(habitat)
         if logger is not None:
             logger.aggregation(
                 source,
@@ -272,7 +272,7 @@ class AggregateRegistry:
         old_state = aggregate.state
         aggregate.mature_to_lewy_body()
         self._set_members_state(aggregate, AlphaSynucleinState.LEWY_BODY)
-        logger = causal_logger_from(aggregate)
+        logger = event_logger_from(aggregate)
         if logger is not None:
             logger.state_transition(
                 aggregate,
@@ -320,7 +320,7 @@ class AggregateRegistry:
             member.join_aggregate(aggregate.aggregate_id, member_state)
         self._members[aggregate.aggregate_id] = members
         aggregate.owner_neuron = habitat
-        aggregate.causal_logger = getattr(habitat, "causal_logger", None)
+        bind_event_logger(aggregate, habitat)
         self._register_degradation_target(habitat, aggregate)
         self.validate_invariants(habitat)
 

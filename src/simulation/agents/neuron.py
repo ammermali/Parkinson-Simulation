@@ -7,7 +7,7 @@ from src.simulation.utils.grid import LocalGrid, clamp
 from src.simulation.agents.structure import NeuronAction, AdaptiveAgent, NeuronConfig, NeuronInternalConfig, NeuronInternalEffects, NeuronInternalScalars, NeuronPerception, NeuronState, AlphaSynucleinState
 from src.simulation.agents.aggregate_registry import AggregateRegistry
 from src.simulation.agents.alphasynuclein import AlphaSynuclein
-from src.simulation.logger.causal_trace_logger import bind_causal_logger, causal_logger_from
+from src.simulation.logger.agent_logging import bind_event_logger, event_logger_from
 
 class Neuron(InternalHabitatMixin, AdaptiveAgent):
     """Neuron macro-agent with an intracellular habitat.
@@ -87,7 +87,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
 
     def see(self, model) -> NeuronPerception:
         """Build the neuron perception from external and internal signals."""
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         env = model.environment
         self.bind_environment(env)
         position = env.position_of(self)
@@ -144,7 +144,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.ticks_in_state += 1
         else:
             self.ticks_in_state = 0
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             self._log_damage_decision(
                 logger,
@@ -302,7 +302,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.pending_action = NeuronAction.R_DOPAMINE
         else:
             self.pending_action = NeuronAction.STRESS
-        logger = causal_logger_from(self)
+        logger = event_logger_from(self)
         if logger is not None:
             logger.action_selection(self, self.pending_action, "neuron_state_action_policy")
         return self.pending_action
@@ -314,26 +314,24 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         env = model.environment
         if self.pending_action == NeuronAction.R_DOPAMINE:
             dopamine = self._release_dopamine(env)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "dopamine_output",
                     dopamine,
-                    "positive",
                     "neuron_dopamine_release"
                 )
         elif self.pending_action == NeuronAction.STRESS:
             env.add_inflammation(self.cfg.stress_inflammation_release_rate)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "inflammation_level",
                     self.cfg.stress_inflammation_release_rate,
-                    "positive",
                     "neuron_stress_inflammation_release",
                 )
         elif self.pending_action == NeuronAction.DUMP_DEBRIS:
@@ -342,14 +340,13 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
                 env.add_debris(debris)
             self.internal_scalars.intracellular_debris = 0.0
             released = self.release_alpha(model)
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None and debris > 0.0:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "extracellular_debris",
                     debris,
-                    "positive",
                     "neuron_dump_debris"
                 )
         elif self.pending_action == NeuronAction.A_ALPHASYNUCLEIN:
@@ -360,14 +357,13 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
                 env,
                 self.cfg.alpha_release_dopamine_fraction
             )
-            logger = causal_logger_from(self)
+            logger = event_logger_from(self)
             if logger is not None and dopamine > 0.0:
                 logger.field_effect(
                     self,
                     self.pending_action,
                     "dopamine_output",
                     dopamine,
-                    "positive",
                     "neuron_residual_dopamine_during_alpha_release"
                 )
         elif self.pending_action == NeuronAction.IDLE:
@@ -376,7 +372,7 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
     def step(self, model):
         """Run one intracellular phase pass followed by the neuron macro step."""
 
-        bind_causal_logger(self, model)
+        bind_event_logger(self, model)
         self.bind_environment(model.environment)
         self._current_tick = getattr(model, "tick_count", None)
         if self.state == NeuronState.RUPTURED:
@@ -425,14 +421,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         s.intracellular_debris = clamp(s.intracellular_debris + e.debris_added - cfg.intracellular_debris_decay * s.intracellular_debris)
         baseline_pull = cfg.energy_demand_recovery_rate * (cfg.energy_demand_baseline - s.energy_demand)
         s.energy_demand = clamp(s.energy_demand + e.energy_demand_added + baseline_pull)
-        logger = causal_logger_from(self)
-        if logger is not None:
-            logger.buffer_commit("oxidative_stress_added", "oxidative_stress", e.oxidative_stress_added, "positive" if e.oxidative_stress_added >= 0 else "negative", "neuron_oxidative_stress_commit", level="macro", owner=self)
-            logger.buffer_commit("debris_added", "intracellular_debris", e.debris_added, "positive" if e.debris_added >= 0 else "negative", "neuron_intracellular_debris_commit", level="macro", owner=self)
-            logger.buffer_commit("energy_demand_added", "energy_demand", e.energy_demand_added + baseline_pull, "positive" if e.energy_demand_added + baseline_pull >= 0 else "negative", "neuron_energy_demand_commit", level="macro", owner=self)
-            logger.snapshot_field("oxidative_stress", s.oxidative_stress, level="macro", owner=self)
-            logger.snapshot_field("intracellular_debris", s.intracellular_debris, level="macro", owner=self)
-            logger.snapshot_field("energy_demand", s.energy_demand, level="macro", owner=self)
 
     def _compute_external_stress(self, perception: NeuronPerception) -> float:
         """Combine extracellular inflammatory, debris and alpha stress."""
@@ -637,16 +625,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self._prune_degradation_buffers()
         if agent in self.grid.agent_registry and agent not in self.degradation_targets and not self.is_target_assigned(agent):
             self.degradation_targets.append(agent)
-            logger = causal_logger_from(self)
-            if logger is not None:
-                logger.target_assignment(
-                    self,
-                    agent,
-                    "neuron_registers_degradation_target",
-                    rule_id="NEURON_REGISTER_DEGRADATION_TARGET",
-                    owner=self,
-                    outcome="registered"
-                )
 
     def available_degradation_targets(self) -> list[AdaptiveAgent]:
         """Return unassigned targets that are still present in the local grid."""
@@ -673,15 +651,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         self.degradation_assignment[lysosome] = target
         if target in self.degradation_targets:
             self.degradation_targets.remove(target)
-        logger = causal_logger_from(self)
-        if logger is not None:
-            logger.target_assignment(
-                lysosome,
-                target,
-                "neuron_assigns_degradation_target",
-                rule_id="LYSOSOME_TARGET_ASSIGNMENT",
-                owner=self
-            )
         return True
 
     def target_for(self, lysosome: AdaptiveAgent) -> Optional[AdaptiveAgent]:

@@ -1,34 +1,20 @@
 from __future__ import annotations
-
 import argparse
 import json
 from collections import Counter
 from pathlib import Path
+from src.analysis.data.artifacts import load_jsonl as _data_load_jsonl, resolve_log_dir
 
-DEFAULT_SIMULATION_LOG_DIR = Path("output/simulation/logs")
-DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/initialization_validation_latest.json")
+DEFAULT_SIMULATION_LOG_DIR = Path("output/run_logs")
+DEFAULT_ANALYSIS_OUTPUT = Path("output/validation_reports/initialization_validation_latest.json")
 
 def load_jsonl(path: Path) -> tuple[list[dict], dict]:
-    stats = {"valid": 0, "malformed": 0, "blank": 0, "examples": []}
-    rows: list[dict] = []
-    if not path.exists():
-        return rows, stats
-    with path.open("r", encoding="utf-8", errors="replace") as stream:
-        for line_no, line in enumerate(stream, 1):
-            if not line.strip():
-                stats["blank"] += 1
-                continue
-            try:
-                rows.append(json.loads(line))
-                stats["valid"] += 1
-            except json.JSONDecodeError:
-                stats["malformed"] += 1
-                if len(stats["examples"]) < 10:
-                    stats["examples"].append({"line": line_no, "text": line[:160].rstrip()})
-    return rows, stats
+    loaded = _data_load_jsonl(path)
+    return loaded.rows, loaded.stats
 
 
 def validate_initialization(output_dir: Path) -> dict:
+    output_dir = resolve_log_dir(output_dir, required_stems=("initialization_agents",))
     agents, jsonl_stats = load_jsonl(output_dir / "initialization_agents.jsonl")
     manifest_path = output_dir / "initialization_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
@@ -72,7 +58,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Validate initialization logs.")
     parser.add_argument("output_dir", nargs="?", type=Path, default=DEFAULT_SIMULATION_LOG_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_ANALYSIS_OUTPUT, help="JSON destination for the validation report.")
-    parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/analysis.")
+    parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/validation_reports.")
     args = parser.parse_args()
 
     report = validate_initialization(args.output_dir)

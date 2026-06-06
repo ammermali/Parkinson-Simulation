@@ -25,12 +25,8 @@ from repast4py.space import DiscretePoint
 from src.simulation.agents.aggregate import AlphaAggregate
 from src.simulation.agents.alphasynuclein import AlphaSynuclein, AlphaSynucleinCompartment
 from src.simulation.agents.astrocyte import Astrocyte
-from src.simulation.agents.lysosome import Lysosome
-from src.simulation.agents.microglia import Microglia
-from src.simulation.agents.mitochondrion import Mitochondrion
 from src.simulation.agents.neuron import Neuron
-from src.simulation.agents.structure.agenttypes import AgentType
-from src.simulation.agents.structure.states import AggregateState, AlphaSynucleinState, NeuronState
+from src.simulation.agents.structure.states import AggregateState, AlphaSynucleinState
 
 # Runtime / Environment
 from src.simulation.substantia_nigra import SubstantiaNigra
@@ -78,6 +74,8 @@ class ParkinsonModel:
             1,
             int(get_param(params, "logging.progress_interval", 25))
         )
+        self.external_movement_enabled = bool(get_param(params, "external.movement.enabled", True))
+        self.external_move_radius = max(1, int(get_param(params, "external.movement.move_radius", 1)))
         self._init_repast_rng(self.seed)
         self.config_rng = RNG(self.seed + self.rank)
         self.rng = random.default_rng
@@ -94,7 +92,6 @@ class ParkinsonModel:
         self.environment = SubstantiaNigra(grid=self.grid, config=ConfigFactory.build_substantia_nigra_config())
         self.agent_factory = AgentFactory(
             rank=self.rank,
-            agent_type=AgentType,
             config_rng=self.config_rng,
             neuron_params=self.neuron_params,
             environment=self.environment,
@@ -103,6 +100,7 @@ class ParkinsonModel:
         self._next_local_id = 0
         self.reporter = RuntimeReporter(self, params)
         self._tick_metrics_file = self.reporter._tick_metrics_file
+        self.event_logger = self.reporter.event_logger
         self.causal_logger = self.reporter.causal_logger
         self.initialization_logger = self.reporter.initialization_logger
         self._create_agents(params)
@@ -187,6 +185,7 @@ class ParkinsonModel:
         for agent in list(self.context.agents()):
             if hasattr(agent, "step"):
                 agent.step(self)
+        self._move_external_agents()
         self._synchronize_environment_effects()
         self.environment.commit_effects(max_possible_dopamine=self._max_possible_dopamine())
         if reporter is not None:
@@ -339,8 +338,43 @@ class ParkinsonModel:
         """Count free proteins and aggregate member proteins from one grid."""
         count_tick_alpha_agents(grid, counts)
 
+    def _move_external_agents(self) -> None:
+        if not getattr(self, "external_movement_enabled", True):
+            return
+        env = self.environment
+        for agent in list(env.grid.agent_registry):
+            probability = self._external_move_probability(agent)
+            if probability <= 0.0:
+                continue
+            if self.rng.random() > probability:
+                continue
+            position = env.position_of(agent)
+            if position is None:
+                continue
+            candidates = list(env.neighbor_points(position, self.external_move_radius, include_center=True))
+            if not candidates:
+                continue
+            env.move_to(agent, self.rng.choice(candidates))
+
+    def _external_move_probability(self, agent) -> float:
+        movement = get_param(self.params, "external.movement", {})
+        if isinstance(agent, AlphaSynuclein):
+            if agent.compartment != AlphaSynucleinCompartment.EXTRACELLULAR or agent.state == AlphaSynucleinState.CLEARED:
+                return 0.0
+            return float(get_param(movement, "alpha_probability", getattr(agent.cfg, "move_probability", 0.0)))
+        if isinstance(agent, AlphaAggregate):
+            if agent.owner_neuron is not None:
+                return 0.0
+            if agent.state == AggregateState.LEWY_BODY:
+                return float(get_param(movement, "lewy_body_probability", get_param(movement, "aggregate_probability", 0.0)))
+            return float(get_param(movement, "aggregate_probability", 0.0))
+        if isinstance(agent, Astrocyte):
+            return float(get_param(movement, "astrocyte_probability", 0.0))
+        if isinstance(agent, Neuron):
+            return float(get_param(movement, "neuron_probability", 0.0))
+        return 0.0
+
     def _final_neuron_transition_details(self) -> list[dict[str, Any]]:
-        """Gather per-neuron transition timing details for the final summary."""
         local_details = [
             {
                 "uid": _uid_text(neuron),

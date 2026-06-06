@@ -6,3 +6,4 @@ matplotlib
 Pillow
 pytest
 multilevelgraphs @ git+https://github.com/marco-caputo/multilevel-graphs.git
+streamlit

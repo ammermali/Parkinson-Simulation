@@ -4,15 +4,11 @@ from collections import Counter
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
-from src.simulation.logger.causal_trace_logger import uid_of, value_of
+from typing import Any, Optional, Callable
 
 
 @dataclass(frozen=True)
 class InitializationAgentRecord:
-    """Full initial-condition record for one created agent."""
-
-    run_id: str
     rank: int
     uid: str
     local_id: Optional[int]
@@ -32,14 +28,8 @@ class InitializationAgentRecord:
     raw_details: Optional[dict[str, Any]]
     display: dict[str, Any]
 
-
 class InitializationLogger:
-    """Exhaustive JSON logger for initial conditions and visualization."""
-
-    schema_version = "1.0-initialization-json"
-
-    def __init__(self, run_id: str, rank: int, comm=None, output_dir: Path | str = "output/simulation/logs", enabled: bool = False):
-        self.run_id = run_id
+    def __init__(self, rank: int, comm=None, output_dir: Path | str = "output/initialization_logs", enabled: bool = False):
         self.rank = rank
         self.comm = comm
         self.output_dir = Path(output_dir)
@@ -59,32 +49,23 @@ class InitializationLogger:
 
     @property
     def agents_path(self) -> Path:
-        """Merged initialization agent JSONL path."""
-
         return self.output_dir / "initialization_agents.jsonl"
 
     @property
     def manifest_path(self) -> Path:
-        """Initialization manifest path."""
-
         return self.output_dir / "initialization_manifest.json"
 
     @property
     def summary_path(self) -> Path:
-        """Initialization summary path."""
-
         return self.output_dir / "initialization_summary.json"
 
     def record_agent(self, agent, position=None, owner=None, target=None, raw_details: Optional[dict[str, Any]] = None) -> None:
-        """Write one initialized agent with full documentary details."""
-
         if not self.enabled:
             return
         agent_class = type(agent).__name__
         owner_uid = uid_of(owner or getattr(agent, "owner_neuron", None))
         target_uid = uid_of(target)
         record = InitializationAgentRecord(
-            run_id=self.run_id,
             rank=self.rank,
             uid=uid_of(agent) or "",
             local_id=_local_id(agent),
@@ -113,8 +94,6 @@ class InitializationLogger:
         self._update_manifest(record)
 
     def close(self) -> None:
-        """Write manifest and compact summary."""
-
         if not self.enabled:
             return
         records = [
@@ -155,8 +134,6 @@ class InitializationLogger:
             for record in records:
                 stream.write(json.dumps(safe_serialize(record), ensure_ascii=False, sort_keys=True) + "\n")
         manifest = {
-            "run_id": self.run_id,
-            "logger_schema_version": self.schema_version,
             "counts": {
                 "total_agents": len(records),
                 "by_class": dict(counts_by_class),
@@ -167,10 +144,9 @@ class InitializationLogger:
             "extracellular_agents": extracellular_agents,
             "config_summary": {
                 "description": "Full per-agent configs are stored in initialization_agents.jsonl."
-            },
+            }
         }
         summary = {
-            "run_id": self.run_id,
             "total_agents": len(records),
             "counts_by_class": dict(counts_by_class),
             "counts_by_rank": counts_by_rank,
@@ -215,7 +191,7 @@ class InitializationLogger:
         if callable(barrier):
             barrier()
 
-    def _allgather(self, records: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    def _allgather(self, records: list[dict[str, Any]]) -> Callable | list[list[dict[str, Any]]]:
         allgather = getattr(self.comm, "allgather", None)
         if callable(allgather):
             return allgather(records)
@@ -223,7 +199,6 @@ class InitializationLogger:
 
 
 def safe_serialize(value):
-    """Serialize dataclasses and Repast objects without recursion."""
     if value is None:
         return None
     if isinstance(value, Enum):
@@ -251,15 +226,12 @@ def safe_serialize(value):
 
 
 def point_dict(point) -> Optional[dict[str, int]]:
-    """Serialize a DiscretePoint-like object into a small dictionary."""
-
     if point is None:
         return None
     if hasattr(point, "x") and hasattr(point, "y"):
         return {
             "x": int(getattr(point, "x")),
-            "y": int(getattr(point, "y")),
-            "z": int(getattr(point, "z", 0))
+            "y": int(getattr(point, "y"))
         }
     return None
 
@@ -278,3 +250,25 @@ def _local_id(agent) -> Optional[int]:
         return uid[0]
     local_id = getattr(agent, "local_id", None)
     return local_id if isinstance(local_id, int) else None
+
+def uid_of(agent) -> Optional[str]:
+    if agent is None:
+        return None
+    uid = getattr(agent, "uid", None)
+    if uid is not None:
+        if isinstance(uid, tuple):
+            return ":".join(str(item) for item in uid)
+        return str(uid)
+    local_id = getattr(agent, "local_id", getattr(agent, "id", ""))
+    ptype = getattr(agent, "ptype", getattr(agent, "type_id", ""))
+    rank = getattr(agent, "rank", "")
+    if local_id == "" and ptype == "" and rank == "":
+        return None
+    return f"{local_id}:{ptype}:{rank}"
+
+def value_of(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, Enum):
+        return str(value.value)
+    return str(value)

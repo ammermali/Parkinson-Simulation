@@ -15,7 +15,6 @@ from src.simulation.utils.config_factory import ConfigFactory
 @dataclass
 class AgentFactory:
     rank: int
-    agent_type: AgentType
     config_rng: RNG
     neuron_params: Params
     environment: SubstantiaNigra
@@ -25,9 +24,9 @@ class AgentFactory:
         return Neuron(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.NEURON,
+            type_id=AgentType.NEURON,
             config=ConfigFactory.build_neuron_config(self.neuron_params, rng=self.config_rng),
-            alpha_type_id=self.agent_type.ALPHA,
+            alpha_type_id=AgentType.ALPHA,
             internal_config=ConfigFactory.build_neuron_internal_config(self.neuron_params),
             environment=self.environment
         )
@@ -36,16 +35,16 @@ class AgentFactory:
         return Microglia(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.MICROGLIA,
+            type_id=AgentType.MICROGLIA,
             config=ConfigFactory.build_microglia_config(rng=self.config_rng),
-            alpha_type_id=self.agent_type.ALPHA
+            alpha_type_id=AgentType.ALPHA
         )
 
     def create_astrocyte(self) -> Astrocyte:
         return Astrocyte(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.ASTROCYTE,
+            type_id=AgentType.ASTROCYTE,
             config=ConfigFactory.build_astrocyte_config(rng=self.config_rng)
         )
 
@@ -53,7 +52,7 @@ class AgentFactory:
         return AlphaSynuclein(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.ALPHA,
+            type_id=AgentType.ALPHA,
             config=ConfigFactory.build_alpha_synuclein_config(rng=self.config_rng),
             compartment=AlphaSynucleinCompartment.EXTRACELLULAR,
             owner_neuron=None
@@ -63,7 +62,7 @@ class AgentFactory:
         return AlphaSynuclein(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.ALPHA,
+            type_id=AgentType.ALPHA,
             config=ConfigFactory.build_alpha_synuclein_config(rng=self.config_rng),
             compartment=AlphaSynucleinCompartment.INTRACELLULAR,
             owner_neuron=owner_neuron
@@ -73,7 +72,7 @@ class AgentFactory:
         return Mitochondrion(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.MITOCHONDRION,
+            type_id=AgentType.MITOCHONDRION,
             config=ConfigFactory.build_mitochondrion_config(rng=self.config_rng),
             owner_neuron=owner_neuron
         )
@@ -82,7 +81,7 @@ class AgentFactory:
         return Lysosome(
             local_id=self.new_id(),
             rank=self.rank,
-            type_id=self.agent_type.LYSOSOME,
+            type_id=AgentType.LYSOSOME,
             owner_neuron=owner_neuron,
             config=ConfigFactory.build_lysosome_config()
         )

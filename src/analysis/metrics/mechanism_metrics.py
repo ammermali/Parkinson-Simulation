@@ -5,12 +5,20 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Optional
 
+from src.analysis.data.artifacts import (
+    RunArtifacts,
+    iter_jsonl as _data_iter_jsonl,
+    iter_many_jsonl as _data_iter_many_jsonl,
+    jsonl_paths as _data_jsonl_paths,
+    rank_file_sort_key as _data_rank_file_sort_key,
+)
+
 LYSOSOME_DEGRADATION_MECHANISMS = {"lysosome_degradation_success", "lysosome_degradation_failure", "lysosome_overwhelmed_by_target"}
 
 ALPHA_AGGREGATION_MECHANISMS = {"alpha_misfolding", "alpha_oligomerization_intention", "alpha_added_to_aggregate", "aggregate_merge", "aggregate_matures_to_lewy_body"}
 
-DEFAULT_SIMULATION_LOG_DIR = Path("output/simulation/logs") #TODO
-DEFAULT_ANALYSIS_OUTPUT = Path("output/analysis/mechanism_metrics_latest.json") #TODO
+DEFAULT_SIMULATION_LOG_DIR = Path("output/run_logs")
+DEFAULT_ANALYSIS_OUTPUT = Path("output/metrics/mechanism_metrics_latest.json")
 
 
 class NumericSummary:
@@ -36,31 +44,30 @@ class NumericSummary:
 
 
 def iter_jsonl(path: Path) -> Iterable[dict]:
-    if not path.exists():
-        return
-    with path.open("r", encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            if not line.strip():
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
+    yield from _data_iter_jsonl(path)
 
 def summarize_mechanisms(output_dir: Path, include_by_tick: bool = True) -> dict:
-    node_paths = _log_paths(output_dir, "g0_nodes")
-    edge_paths = _log_paths(output_dir, "g0_edges")
+    event_artifacts = RunArtifacts.resolve(output_dir, required_stems=("events",))
+    artifacts = event_artifacts if event_artifacts.event_paths else RunArtifacts.resolve(output_dir, required_stems=("g0_edges",))
+    node_paths = artifacts.g0_node_paths
+    edge_paths = artifacts.g0_edge_paths
+    event_paths = artifacts.event_paths
     metrics = _new_metrics(include_by_tick)
     for node in _iter_many(node_paths):
         _count_general_node(metrics, node)
-    for edge in _iter_many(edge_paths):
+    edge_rows = (
+        (_event_as_metric_edge(event) for event in artifacts.iter_events())
+        if event_paths
+        else _iter_many(edge_paths)
+    )
+    for edge in edge_rows:
         _count_general_edge(metrics, edge)
         _count_alpha_mechanism(metrics, edge)
         _count_lysosome_mechanism(metrics, edge)
         _count_mitochondrion_mechanism(metrics, edge)
         _count_neuron_mechanism(metrics, edge)
         _count_glial_mechanism(metrics, edge)
-    return _finalize_metrics(output_dir, edge_paths, metrics, include_by_tick)
+    return _finalize_metrics(artifacts.log_dir, edge_paths, metrics, include_by_tick, event_paths=event_paths)
 
 
 def _new_metrics(include_by_tick: bool) -> dict:
@@ -227,7 +234,7 @@ def _count_glial_mechanism(metrics: dict, edge: dict) -> None:
         metrics["glia"]["astrocyte_actions"][edge.get("target_state") or "unknown"] += 1
 
 
-def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, include_by_tick: bool) -> dict:
+def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, include_by_tick: bool, *, event_paths: Optional[list[Path]] = None) -> dict:
     alpha = metrics["alpha"]
     lysosome = metrics["lysosome"]
     nodes = metrics["nodes"]
@@ -242,6 +249,7 @@ def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, i
 
     report = {
         "output_dir": str(output_dir),
+        "input_event_files": [str(path) for path in event_paths or []],
         "input_edge_files": [str(path) for path in edge_paths],
         "total_edges": metrics["total_edges"],
         "selected_mechanisms": {
@@ -346,26 +354,59 @@ def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, i
 def _aggregation_group_key(edge: dict) -> tuple:
     return (_tick(edge), edge.get("owner_uid"), edge.get("target_uid"))
 
+
+def _event_as_metric_edge(event: dict) -> dict:
+    actor = event.get("actor") or {}
+    target = event.get("target") or {}
+    effect = _first_effect(event)
+    stochastic = event.get("stochastic") or {}
+    event_type = event.get("event_type") or "unknown"
+    relation = {
+        "action_selected": "action_selection",
+        "field_change": "field_effect" if effect.get("scope") == "environment" else "internal_field_effect",
+    }.get(event_type, event_type)
+    source_state = actor.get("state_before") or actor.get("state")
+    target_state = target.get("state_after") or target.get("state")
+    if event_type == "state_transition":
+        target_state = actor.get("state_after")
+    if event_type == "action_selected":
+        target_state = (event.get("context") or {}).get("action")
+    return {
+        "tick": event.get("tick"),
+        "mechanism": event.get("mechanism") or "unknown",
+        "relation": relation,
+        "source_type": actor.get("type") or "unknown",
+        "source_state": source_state,
+        "source_uid": actor.get("uid"),
+        "target_type": target.get("type") or actor.get("type") or "unknown",
+        "target_state": target_state,
+        "target_uid": target.get("uid") or actor.get("uid"),
+        "target_field": effect.get("field"),
+        "owner_uid": actor.get("owner_uid") or target.get("owner_uid"),
+        "outcome": event.get("outcome") or stochastic.get("outcome"),
+        "probability": stochastic.get("probability"),
+        "rng_value": stochastic.get("rng_value"),
+        "effect_value": effect.get("delta"),
+        "rule_id": event.get("rule_id"),
+    }
+
+
+def _first_effect(event: dict) -> dict:
+    effects = event.get("effects") or []
+    if not effects:
+        return {}
+    first = effects[0]
+    return first if isinstance(first, dict) else {}
+
 def _log_paths(output_dir: Path, stem: str) -> list[Path]:
-    merged = output_dir / f"{stem}.jsonl"
-    if merged.exists() and merged.stat().st_size > 0:
-        return [merged]
-    return sorted(output_dir.glob(f"{stem}_rank*.jsonl"), key=_rank_file_sort_key)
+    return _data_jsonl_paths(output_dir, stem)
 
 def _iter_many(paths: list[Path]) -> Iterable[dict]:
-    for path in paths:
-        yield from iter_jsonl(path)
+    yield from _data_iter_many_jsonl(paths)
 
 
 def _rank_file_sort_key(path: Path) -> tuple[int, str]:
-    marker = "_rank"
-    if marker not in path.stem:
-        return (0, path.name)
-    suffix = path.stem.split(marker, 1)[1]
-    try:
-        return (int(suffix), path.name)
-    except ValueError:
-        return (0, path.name)
+    return _data_rank_file_sort_key(path)
 
 
 def _tick(edge: dict) -> int:
@@ -430,7 +471,7 @@ def main() -> None:
     parser.add_argument("output_dirs", nargs="*", type=Path, default=[DEFAULT_SIMULATION_LOG_DIR])
     parser.add_argument("--no-by-tick", action="store_true", help="Omit per-tick mechanism counts from the report.")
     parser.add_argument("--output", type=Path, default=DEFAULT_ANALYSIS_OUTPUT, help="JSON destination for the report.")
-    parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/analysis.")
+    parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/metrics.")
     args = parser.parse_args()
     report = {
         "runs": [

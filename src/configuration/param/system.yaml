@@ -7,6 +7,15 @@ external.population:
   astrocytes: 15
   alpha: 0
 
+external.movement:
+  enabled: true
+  move_radius: 1
+  neuron_probability: 0.0
+  astrocyte_probability: 0.08
+  alpha_probability: 0.35
+  aggregate_probability: 0.08
+  lewy_body_probability: 0.02
+
 world:
   height: 10
   width: 10
@@ -19,6 +28,8 @@ logging:
   causal:
     enabled: true
   initialization:
+    enabled: true
+  spatial:
     enabled: true
   scalar_stdout: true
   tick_metrics_csv: true

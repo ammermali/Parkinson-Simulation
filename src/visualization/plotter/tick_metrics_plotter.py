@@ -1,71 +1,32 @@
 from __future__ import annotations
-
 import argparse
-import csv
 from html import escape
 from pathlib import Path
 from typing import Callable, Optional
+from src.analysis.data.run_data import find_tick_metrics, read_tick_metrics_numeric
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_TICK_METRICS = PROJECT_ROOT / "output" / "simulation" / "logs" / "tick_metrics.csv"
+DEFAULT_TICK_METRICS = PROJECT_ROOT / "output" / "metrics" / "tick_metrics.csv"
 DEFAULT_PLOT_DIR = PROJECT_ROOT / "output" / "plots"
 
 SERIES_GROUPS = {
     "neurons": {
-        "columns": (
-            "neurons_healthy",
-            "neurons_compromised",
-            "neurons_apoptotic",
-            "neurons_ruptures"
-        ),
-        "labels": {
-            "neurons_healthy": "Healthy",
-            "neurons_compromised": "Compromised",
-            "neurons_apoptotic": "Apoptotic",
-            "neurons_ruptures": "Ruptured"
-        },
-        "title": "Neuron State Counts",
-        "ylabel": "Neuron count",
-        "filename": "neuron_states.png",
-    },
+        "columns": ("neurons_healthy", "neurons_compromised", "neurons_apoptotic", "neurons_ruptures"),
+        "labels": {"neurons_healthy": "Healthy", "neurons_compromised": "Compromised", "neurons_apoptotic": "Apoptotic", "neurons_ruptures": "Ruptured"},
+        "title": "Neuron State Counts", "ylabel": "Neuron count", "filename": "neuron_states.png"},
     "alpha_free": {
-        "columns": (
-            "free_alpha",
-        ),
-        "labels": {
-            "free_alpha": "Free alpha-synuclein",
-        },
-        "title": "Free Alpha-Synuclein Count",
-        "ylabel": "Free alpha-synuclein count",
-        "filename": "alpha_free.png",
-    },
+        "columns": ("free_alpha"),
+        "labels": {"free_alpha": "Free alpha-synuclein"},
+        "title": "Free Alpha-Synuclein Count", "ylabel": "Free alpha-synuclein count", "filename": "alpha_free.png"},
     "alpha_aggregate": {
-        "columns": (
-            "alpha_aggregate",
-        ),
-        "labels": {
-            "alpha_aggregate": "Aggregated alpha-synuclein proteins",
-        },
-        "title": "Aggregated Alpha-Synuclein Protein Count",
-        "ylabel": "Aggregated protein count",
-        "filename": "alpha_aggregate.png",
-    },
+        "columns": ("alpha_aggregate",),
+        "labels": {"alpha_aggregate": "Aggregated alpha-synuclein proteins",},
+        "title": "Aggregated Alpha-Synuclein Protein Count","ylabel": "Aggregated protein count","filename": "alpha_aggregate.png"},
     "substantia_nigra": {
-        "columns": (
-            "debris",
-            "inflammation",
-            "dopamine",
-        ),
-        "labels": {
-            "debris": "Debris",
-            "inflammation": "Inflammation",
-            "dopamine": "Dopamine",
-        },
-        "title": "Substantia Nigra Scalars",
-        "ylabel": "Normalized scalar",
-        "filename": "substantia_nigra_scalars.png",
-    },
+        "columns": ("debris","inflammation","dopamine"),
+        "labels": {"debris": "Debris","inflammation": "Inflammation","dopamine": "Dopamine"},
+        "title": "Substantia Nigra Scalars","ylabel": "Normalized scalar", "filename": "substantia_nigra_scalars.png"}
 }
 
 
@@ -128,25 +89,26 @@ def read_tick_metrics(metrics_path: Path | str | None, required_columns: tuple[s
     """Read tick_metrics.csv and coerce selected columns to floats."""
 
     metrics_path = Path(metrics_path) if metrics_path is not None else DEFAULT_TICK_METRICS
-    if not metrics_path.exists():
-        raise FileNotFoundError(f"Tick metrics CSV not found: {metrics_path}")
-    with metrics_path.open("r", encoding="utf-8", newline="") as stream:
-        reader = csv.DictReader(stream)
-        fieldnames = set(reader.fieldnames or ())
-        missing = [column for column in ("tick", *required_columns) if column not in fieldnames]
-        if missing:
-            raise ValueError(f"Missing columns in {metrics_path}: {', '.join(missing)}")
-        rows = []
-        for row in reader:
-            rows.append({
-                "tick": _number(row["tick"]),
-                **{
-                    column: _number(row[column])
-                    for column in required_columns
-                },
-            })
-    if not rows:
-        raise ValueError(f"No metric rows found in {metrics_path}")
+    resolved_path = find_tick_metrics(metrics_path)
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"Tick metrics CSV not found: {resolved_path}")
+    raw_rows = read_tick_metrics_numeric(resolved_path)
+    if not raw_rows:
+        raise ValueError(f"No metric rows found in {resolved_path}")
+    fieldnames = set(raw_rows[0])
+    missing = [column for column in ("tick", *required_columns) if column not in fieldnames]
+    if missing:
+        raise ValueError(f"Missing columns in {resolved_path}: {', '.join(missing)}")
+    rows = [
+        {
+            "tick": _number(row["tick"]),
+            **{
+                column: _number(row[column])
+                for column in required_columns
+            },
+        }
+        for row in raw_rows
+    ]
     return rows
 
 

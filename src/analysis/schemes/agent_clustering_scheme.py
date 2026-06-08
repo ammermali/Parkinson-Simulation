@@ -6,11 +6,7 @@ from src.analysis.schemes.contraction_utils import agent_cluster_key, iter_edges
 
 class AgentClusteringScheme(ContractionScheme):
     def __init__(self):
-        super().__init__(
-            supernode_attr_function=self._supernode_attr,
-            superedge_attr_function=self._superedge_attr,
-            c_set_attr_function=self._component_set_attr
-        )
+        super().__init__(supernode_attr_function=self._supernode_attr, superedge_attr_function=self._superedge_attr, c_set_attr_function=self._component_set_attr)
 
     def contraction_name(self) -> str:
         return "agent_cluster"
@@ -19,8 +15,11 @@ class AgentClusteringScheme(ContractionScheme):
         return AgentClusteringScheme()
 
     def contract(self, graph):
+        if hasattr(graph, "nodes") and hasattr(graph, "edges") and not hasattr(graph, "V"):
+            return self.contract_networkx(graph)
         return super().contract(graph)
 
+    # Fallback method
     def contract_networkx(self, graph):
         g2 = make_digraph()
         g2.graph.update(level="G2", contraction="agent_clustering")
@@ -48,13 +47,8 @@ class AgentClusteringScheme(ContractionScheme):
         for node in dec_graph.nodes():
             grouped[agent_cluster_key(node.key, node.attr)].add(node)
         return CompTable(
-            ComponentSet(
-                self._get_component_set_id(),
-                nodes,
-                **self._component_set_attr(nodes)
-            )
-            for nodes in grouped.values()
-        )
+            ComponentSet(self._get_component_set_id(), nodes, **self._component_set_attr(nodes))
+            for nodes in grouped.values())
 
     def _component_set_attr(self, nodes: set) -> dict[str, Any]:
         key = agent_cluster_key(next(iter(nodes)).key, next(iter(nodes)).attr)
@@ -70,15 +64,3 @@ class AgentClusteringScheme(ContractionScheme):
 
     def _superedge_attr(self, superedge) -> dict[str, Any]:
         return summarize_superedges(superedge.dec)
-
-    def _update_added_node(self, node):  # pragma: no cover - dynamic updates are not used in this pipeline.
-        raise NotImplementedError("Dynamic updates are not supported by AgentClusteringScheme.")
-
-    def _update_removed_node(self, node):  # pragma: no cover
-        raise NotImplementedError("Dynamic updates are not supported by AgentClusteringScheme.")
-
-    def _update_added_edge(self, edge):  # pragma: no cover
-        raise NotImplementedError("Dynamic updates are not supported by AgentClusteringScheme.")
-
-    def _update_removed_edge(self, edge):  # pragma: no cover
-        raise NotImplementedError("Dynamic updates are not supported by AgentClusteringScheme.")

@@ -1,10 +1,8 @@
 from __future__ import annotations
-
 import re
 from collections.abc import Iterable
 from typing import Any, Optional
 import networkx as nx
-
 
 def iter_edges(graph) -> Iterable[tuple[Any, Any, dict[str, Any]]]:
     if graph.is_multigraph():
@@ -13,7 +11,6 @@ def iter_edges(graph) -> Iterable[tuple[Any, Any, dict[str, Any]]]:
         return
     for source, target, attrs in graph.edges(data=True):
         yield source, target, attrs
-
 
 def merge_summary_edge(graph, source: str, target: str, attrs: dict[str, Any]) -> None:
     count = int_or_default(attrs.get("count"), 1)
@@ -27,35 +24,10 @@ def merge_summary_edge(graph, source: str, target: str, attrs: dict[str, Any]) -
     relation = attrs.get("relation")
     mechanism = attrs.get("mechanism")
     causal_kind = attrs.get("causal_kind")
-    action = attrs.get("action")
     outcome = attrs.get("outcome")
     sign = edge_sign(attrs, total_effect)
-
     if not graph.has_edge(source, target):
-        graph.add_edge(
-            source,
-            target,
-            count=0,
-            lower_edge_count=0,
-            total_effect=0.0,
-            mean_effect=0.0,
-            mean_of_mean_effect=0.0,
-            first_seen=first_seen,
-            last_seen=last_seen,
-            sign=sign,
-            relation=relation,
-            mechanism=mechanism,
-            causal_kind=causal_kind,
-            action=action,
-            outcome=outcome,
-            relations=[],
-            mechanisms=[],
-            causal_kinds=[],
-            actions=[],
-            outcomes=[],
-            source_edge_ids=[],
-        )
-
+        graph.add_edge(source, target, count=0, lower_edge_count=0, total_effect=0.0, mean_effect=0.0, mean_of_mean_effect=0.0, first_seen=first_seen, last_seen=last_seen, sign=sign, relation=relation, mechanism=mechanism, causal_kind=causal_kind, outcome=outcome, relations=[], mechanisms=[], causal_kinds=[], outcomes=[], source_edge_ids=[])
     edge = graph.edges[source, target]
     edge["count"] += count
     edge["lower_edge_count"] += 1
@@ -69,25 +41,17 @@ def merge_summary_edge(graph, source: str, target: str, attrs: dict[str, Any]) -
     append_many(edge["relations"], attrs.get("relations", relation))
     append_many(edge["mechanisms"], attrs.get("mechanisms", mechanism))
     append_many(edge["causal_kinds"], attrs.get("causal_kinds", causal_kind))
-    append_many(edge["actions"], attrs.get("actions", action))
     append_many(edge["outcomes"], attrs.get("outcomes", outcome))
     append_many(edge["source_edge_ids"], attrs.get("source_edge_ids", attrs.get("edge_ids", attrs.get("edge_id"))))
     edge["relation"] = compact_label(edge["relations"])
     edge["mechanism"] = compact_label(edge["mechanisms"])
     edge["causal_kind"] = compact_label(edge["causal_kinds"])
-    edge["action"] = compact_label(edge["actions"])
     edge["outcome"] = compact_label(edge["outcomes"])
     edge["weight"] = edge["count"]
     edge["label"] = edge_label(edge)
 
 
-def summarize_nodes(
-    nodes: Iterable[tuple[Any, dict[str, Any]]],
-    *,
-    key: str,
-    contraction: str,
-    level: str,
-) -> dict[str, Any]:
+def summarize_nodes(nodes: Iterable[tuple[Any, dict[str, Any]]], *, key: str, contraction: str, level: str) -> dict[str, Any]:
     node_rows = list(nodes)
     attrs = [row for _, row in node_rows]
     ticks = [
@@ -123,8 +87,7 @@ def summarize_nodes(
         "absorbed_edge_count": sum(int_or_default(attr.get("absorbed_edge_count"), 0) for attr in attrs),
         "first_seen": min(ticks) if ticks else None,
         "last_seen": max(ticks) if ticks else None,
-        "original_node_ids": original_node_ids
-    }
+        "original_node_ids": original_node_ids}
 
 
 def summarize_supernodes(supernodes: Iterable[Any], *, key: str, contraction: str, level: str) -> dict[str, Any]:
@@ -132,8 +95,7 @@ def summarize_supernodes(supernodes: Iterable[Any], *, key: str, contraction: st
         ((node.key, node.attr) for node in supernodes),
         key=key,
         contraction=contraction,
-        level=level,
-    )
+        level=level)
 
 
 def summarize_superedges(superedges: Iterable[Any]) -> dict[str, Any]:
@@ -205,7 +167,7 @@ def edge_label(attrs: dict[str, Any]) -> str:
 
 
 def edge_sign(attrs: dict[str, Any], effect: float) -> str:
-    raw = attrs.get("sign") or attrs.get("effect_sign")
+    raw = attrs.get("sign")
     if raw in {"positive", "+"}:
         return "+"
     if raw in {"negative", "-"}:

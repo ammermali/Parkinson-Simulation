@@ -1,381 +1,676 @@
 # Parkinson Simulation
 
-Agent-based Parkinson's disease simulation and analysis toolkit.
+Agent-based framework for simulating, analysing and visualising simplified mechanisms involved in Parkinson’s disease progression.
 
-This repository models a simplified Substantia Nigra environment with neurons,
-alpha-synuclein proteins, aggregates, mitochondria, lysosomes, microglia and
-astrocytes. The current focus is not final biological calibration yet, but a
-simulation-ready architecture with explicit mechanisms, YAML-driven parameters,
-causal logging and graph-based analysis.
+The project provides:
 
-## Current Simulation
+* a distributed simulation built with Repast4Py and MPI;
+* a command-line interface for simulation and post-processing;
+* a Streamlit dashboard for configuring, running and exploring experiments;
+* causal and initialization logging;
+* time-series plots;
+* multilevel causal graph generation;
+* automated tests.
 
-Implemented biological mechanisms include:
+> This is an exploratory computational model and is not intended for clinical use, diagnosis or biological prediction.
 
-- Alpha-synuclein misfolding, oligomerization and Lewy body formation.
-- Environment-level `AggregateRegistry` ownership for aggregate identity,
-  membership tracking and invariant validation.
-- Lysosome targeting, degradation, failure and overwhelming logic.
-- Mitochondrion lifecycle, damage progression and lysosome-mediated recovery.
-- Neuron internal environment, damage estimation, dopamine release, rupture,
-  alpha release into the Substantia Nigra and gradual alpha absorption.
-- Microglia and astrocyte extracellular response to inflammation, debris and
-  nearby alpha-related signals.
-- Shared Substantia Nigra scalar lifecycle for debris, inflammation and
-  dopamine.
-- Per-agent configuration sampling for perception thresholds.
+---
 
-## Project Layout
+## Requirements
 
-```text
-src/simulation/agents/       Agent classes and biological mechanisms
-src/simulation/logger/       Causal and initialization loggers
-src/simulation/params/       YAML parameter files
-src/simulation/utils/        Params, RNG and config factory utilities
-src/analysis/                Log analysis, validation, metrics and graph builders
-src/analysis/schemes/        Multilevel graph contraction schemes
-src/visualization/           Plotters for tick_metrics.csv
-specifics/                  Project notes and specifications
-test/                       Unit tests
-output/simulation/          Simulation outputs
-output/analysis/             Analysis, plots and graph outputs
+### Software
+
+* Python 3.10 or newer
+* Git
+* An MPI implementation:
+
+  * Open MPI, or
+  * MPICH
+
+The project uses the following Python dependencies:
+
+* `repast4py`
+* `mpi4py`
+* `PyYAML`
+* `networkx`
+* `matplotlib`
+* `Pillow`
+* `pytest`
+* `streamlit`
+* `multilevelgraphs`
+
+All Python dependencies are listed in `requirements.txt`.
+
+### Installing MPI
+
+#### Ubuntu / Debian
+
+```bash
+sudo apt update
+sudo apt install openmpi-bin libopenmpi-dev
 ```
 
-## Runtime Dependencies
+#### macOS
 
-The simulation uses:
+Using Homebrew:
 
-- Python 3.10 or newer.
-- `repast4py`.
-- `mpi4py`.
-- `PyYAML`.
+```bash
+brew install open-mpi
+```
 
-Analysis and graph export additionally use:
+#### Windows
 
-- `networkx`.
-- `matplotlib`.
-- `multilevelgraphs`, optional for the future full multilevel hierarchy.
+Running Repast4Py and MPI directly on Windows may require additional configuration. Using WSL with Ubuntu is recommended.
 
-## Running The Simulation
+After installing MPI, verify that it is available:
+
+```bash
+mpiexec --version
+```
+
+---
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/ammermali/Parkinson-Simulation.git
+cd Parkinson-Simulation
+```
+
+Create a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+Activate it.
+
+### Linux / macOS
+
+```bash
+source .venv/bin/activate
+```
+
+### Windows PowerShell
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Upgrade `pip`:
+
+```bash
+python -m pip install --upgrade pip
+```
+
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Verify the installation:
+
+```bash
+python main.py --help
+```
+
+---
+
+## Quick Start
+
+### Start the dashboard
 
 From the repository root:
 
-```powershell
+```bash
+streamlit run app.py
+```
+
+Streamlit will print a local address, usually:
+
+```text
+http://localhost:8501
+```
+
+Open it in a browser if it does not open automatically.
+
+The dashboard includes pages for:
+
+* parameter configuration;
+* simulation execution;
+* spatial reconstruction;
+* initialization inspection;
+* post-run metrics;
+* G0 temporal causal graph;
+* G1 time-contracted graph;
+* G2 agent-state graph;
+* G3 topological pattern graph;
+* project documentation.
+
+### Run a simulation from the CLI
+
+```bash
 mpiexec -n 4 python main.py simulate
 ```
 
-The CLI loads `src/simulation/params/system.yaml` by default and delegates to
-the Repast4Py engine. The engine still exposes a direct module entrypoint for
-debugging, but `main.py` is the canonical suite entrypoint:
+The value after `-n` is the number of MPI processes. For example, to run with two processes:
 
-```powershell
-mpiexec -n 4 python src/simulation/engine.py
+```bash
+mpiexec -n 2 python main.py simulate
 ```
 
-Main system settings include:
+For a minimal local run, you can use:
 
-- `stop.at`: final simulation tick.
-- `random.seed`: global seed.
-- `external.population`: global population counts.
-- `world.width`, `world.height`, `world.buffer_size`: Repast grid shape.
-- `logging.output_dir`: runtime output directory.
-- `logging.causal.enabled`: enables G0 causal nodes and edges.
-- `logging.initialization.enabled`: enables initial-condition logs.
-- `logging.tick_metrics_csv`: writes compact per-tick metrics.
-- `logging.progress_stdout`: prints progress during long runs.
-- `logging.summary_stdout`: prints the final simulation summary.
+```bash
+mpiexec -n 1 python main.py simulate
+```
 
-Default simulation outputs are written to:
+---
+
+## Dashboard
+
+Launch the dashboard with:
+
+```bash
+streamlit run app.py
+```
+
+The dashboard is the recommended interface for interactive usage. It allows users to configure parameters, start simulations and inspect generated results without invoking each analysis command manually.
+
+The dashboard is divided into four main areas.
+
+### Run
+
+* **Parameters** — inspect and modify simulation parameters.
+* **Simulation** — start and monitor simulation runs.
+
+### Post-run
+
+* **Reconstruction** — inspect spatial reconstruction data.
+* **Initialization Overview** — explore the initial simulation state.
+* **Post-run Metrics** — visualise metrics generated during execution.
+
+### Graphs
+
+* **Temporal Causal Graph** — inspect the full G0 causal graph.
+* **Time-contracted Graph** — inspect the G1 graph.
+* **Agent-state Graph** — inspect the G2 graph.
+* **Topological Pattern Graph** — inspect the G3 graph.
+
+### Docs
+
+* **Specifics and Docs** — read the project documentation from the dashboard.
+
+Stop the dashboard with:
 
 ```text
-output/simulation/logs
+Ctrl+C
 ```
 
-## Configuration
+---
 
-Parameters are stored in one YAML file per configurable agent or mechanism:
+## Command-Line Interface
+
+`main.py` is the main CLI entry point.
+
+Display the available commands:
+
+```bash
+python main.py --help
+```
+
+Display help for a specific command:
+
+```bash
+python main.py <command> --help
+```
+
+For example:
+
+```bash
+python main.py simulate --help
+python main.py graphs --help
+python main.py postprocess --help
+```
+
+### Available commands
+
+| Command         | Description                                   |
+| --------------- | --------------------------------------------- |
+| `simulate`      | Run the distributed simulation                |
+| `validate-g0`   | Validate causal graph logs                    |
+| `validate-init` | Validate initialization logs                  |
+| `mechanisms`    | Count biological mechanisms in causal traces  |
+| `intervention`  | Generate an intervention-oriented run summary |
+| `plot`          | Generate plots from tick metrics              |
+| `graphs`        | Generate multilevel causal graphs             |
+| `postprocess`   | Run the standard post-simulation workflow     |
+
+---
+
+## Running the Simulation
+
+The standard command is:
+
+```bash
+mpiexec -n 4 python main.py simulate
+```
+
+The simulation reads its default system configuration from:
 
 ```text
 src/simulation/params/system.yaml
-src/simulation/params/neuron.yaml
-src/simulation/params/microglia.yaml
-src/simulation/params/astrocyte.yaml
-src/simulation/params/alpha.yaml
-src/simulation/params/mitochondrion.yaml
-src/simulation/params/lysosome.yaml
-src/simulation/params/substantia_nigra.yaml
 ```
 
-`Params` loads YAML files safely by name, filename or explicit path.
-`ConfigFactory` converts YAML values into runtime config dataclasses.
-
-Perception thresholds use nested `mean` and `std` entries and are sampled once
-per agent config creation:
-
-```yaml
-thresholds:
-  inflammation_high_threshold:
-    mean: 0.7
-    std: 0.05
-```
-
-The sampled value is clamped to `[0.0, 1.0]`. Non-threshold rates,
-probabilities, counts and decay values remain scalar unless explicitly modeled
-otherwise.
-
-For a full parameter reference, see:
+Agent- and mechanism-specific parameters are stored in:
 
 ```text
-specifics/parameters_guide.md
+src/simulation/params/
 ```
 
-or click [here](specifics/parameters_guide.md).
-
-## Logging
-
-The simulation currently writes three complementary log families.
-
-### Causal G0 Logs
-
-When causal logging is enabled, the engine writes:
+The main configuration files include:
 
 ```text
-g0_nodes.jsonl
-g0_edges.jsonl
+system.yaml
+neuron.yaml
+microglia.yaml
+astrocyte.yaml
+alpha.yaml
+mitochondrion.yaml
+lysosome.yaml
+substantia_nigra.yaml
 ```
 
-or rank-local files that are merged at the end of a distributed run.
+Before running an experiment, review at least:
 
-G0 nodes represent timed states:
+* final simulation tick;
+* random seed;
+* agent population sizes;
+* grid dimensions;
+* output directory;
+* causal logging settings;
+* initialization logging settings;
+* tick metrics settings.
+
+The simulation engine can also be started directly for debugging:
+
+```bash
+mpiexec -n 4 python src/simulation/engine.py
+```
+
+However, the recommended entry point is:
+
+```bash
+python main.py
+```
+
+---
+
+## Running the Tests
+
+Run the complete test suite from the repository root:
+
+```bash
+python -m pytest
+```
+
+Run the tests with verbose output:
+
+```bash
+python -m pytest -v
+```
+
+Stop after the first failure:
+
+```bash
+python -m pytest -x
+```
+
+Run a single test file:
+
+```bash
+python -m pytest tests/path_to_test.py
+```
+
+Run a specific test:
+
+```bash
+python -m pytest tests/path_to_test.py::test_name
+```
+
+Show printed output while running tests:
+
+```bash
+python -m pytest -s
+```
+
+Some tests require:
+
+* a working MPI installation;
+* `mpi4py`;
+* `repast4py`;
+* optional graph dependencies.
+
+Tests that rely on unavailable optional dependencies may be skipped automatically.
+
+---
+
+## Post-processing
+
+After completing a simulation, run the standard analysis workflow:
+
+```bash
+python main.py postprocess
+```
+
+Generate plots as part of post-processing:
+
+```bash
+python main.py postprocess --plots
+```
+
+Generate plots and multilevel graphs:
+
+```bash
+python main.py postprocess --plots --graphs
+```
+
+---
+
+## Plot Generation
+
+Plots are generated from:
 
 ```text
-AgentNameID_State@Time
-Environment_Field@Time
+output/simulation/logs/tick_metrics.csv
 ```
 
-G0 edges represent causal relations such as perception, action, transition,
-targeting, degradation and aggregation.
+Generate neuron-state plots:
 
-### Initialization Logs
+```bash
+python main.py plot neurons
+```
 
-Initialization logs describe the starting state, including alpha-synuclein
-agents that do not immediately misfold. These logs are useful for checking that
-population counts, configs and initial placement were imported correctly.
+Generate the free alpha-synuclein plot:
 
-### Tick Metrics
+```bash
+python main.py plot alpha-free
+```
 
-`tick_metrics.csv` stores compact global values per tick:
+Generate the aggregated alpha-synuclein plot:
+
+```bash
+python main.py plot alpha-aggregate
+```
+
+Generate all alpha-synuclein plots:
+
+```bash
+python main.py plot alpha
+```
+
+Generate Substantia Nigra environmental plots:
+
+```bash
+python main.py plot sn
+```
+
+Generate all available plots:
+
+```bash
+python main.py plot all
+```
+
+Generated plots are written by default to:
 
 ```text
-debris,inflammation,dopamine,
-neurons_healthy,neurons_compromised,neurons_apoptotic,neurons_ruptures,
-free_alpha,alpha_aggregate
+output/plots/
 ```
 
-`free_alpha` counts free alpha-synuclein proteins. `alpha_aggregate` counts
-alpha-synuclein proteins represented inside aggregates, not the number of
-aggregate agents. This is the main lightweight file for calibration plots.
+---
 
-## Analysis Commands
+## Graph Generation
 
-Mechanism counts from G0 causal traces:
+Generate the default multilevel graphs:
 
-```powershell
-python main.py mechanisms
+```bash
+python main.py graphs
 ```
 
-Intervention-oriented scalar and event summary:
+This produces the G1 and G2 graph levels.
 
-```powershell
-python main.py intervention
+To export G0 as well:
+
+```bash
+python main.py graphs --write-g0
 ```
 
-Intervention analysis is used to compare completed simulation runs in which a
-mechanism, probability, threshold or parameter group has been deliberately
-changed. It is not a correctness test by itself. It helps answer questions such
-as whether weakening lysosome degradation, changing alpha aggregation
-probabilities, or altering glial thresholds produces a measurable difference in
-pathology progression. The report summarizes threshold crossings, final
-environmental values, key event counts and agent-state counts over time.
+G0 is optional because the complete temporal causal graph can become very large.
 
-Validate G0 trace consistency:
+The main graph outputs are written to:
 
-```powershell
+```text
+output/analysis/graphs/
+```
+
+Typical generated files include:
+
+```text
+g1.gexf
+g2.gexf
+multilevel_report.md
+```
+
+GEXF files can be opened directly with Gephi.
+
+To inspect all graph options:
+
+```bash
+python main.py graphs --help
+```
+
+---
+
+## Validation and Analysis
+
+Validate causal G0 logs:
+
+```bash
 python main.py validate-g0
 ```
 
 Validate initialization logs:
 
-```powershell
+```bash
 python main.py validate-init
 ```
 
-Default analysis outputs are written to:
+Count biological mechanisms found in causal traces:
+
+```bash
+python main.py mechanisms
+```
+
+Generate an intervention-oriented summary:
+
+```bash
+python main.py intervention
+```
+
+Analysis outputs are written by default to:
 
 ```text
-output/analysis
+output/analysis/
 ```
 
-## Visualization
+---
 
-Plotters read `output/simulation/logs/tick_metrics.csv` by default and write
-PNG plots to `output/plots`.
+## Output Structure
 
-Neuron states:
-
-```powershell
-python main.py plot neurons
-```
-
-Free alpha:
-
-```powershell
-python main.py plot alpha-free
-```
-
-Aggregate alpha:
-
-```powershell
-python main.py plot alpha-aggregate
-```
-
-Both alpha plots, written as separate figures:
-
-```powershell
-python main.py plot alpha
-```
-
-Substantia Nigra scalar trends:
-
-```powershell
-python main.py plot sn
-```
-
-All default plots:
-
-```powershell
-python main.py plot all
-```
-
-Default plot outputs are written to:
+Simulation and analysis results are stored under `output/`.
 
 ```text
-output/plots
+output/
+├── simulation/
+│   └── logs/
+├── analysis/
+│   └── graphs/
+└── plots/
 ```
 
-## Central CLI
+### Simulation logs
 
-`main.py` is the primary entrypoint for the full suite:
-
-```powershell
-python main.py --help
-```
-
-Main commands:
+The default simulation log directory is:
 
 ```text
-simulate       Run the simulation
-validate-g0    Validate causal trace logs
-validate-init  Validate initialization logs
-mechanisms     Count biological mechanisms from G0 logs
-intervention   Summarize runs for intervention comparison
-plot           Generate tick_metrics.csv plots
-graphs         Export G1/G2 graph levels, optionally G0
-postprocess    Run the standard post-simulation analysis pipeline
+output/simulation/logs/
 ```
 
-After a simulation run, the compact post-processing workflow is:
-
-```powershell
-python main.py postprocess --plots
-```
-
-To include graph exports as well:
-
-```powershell
-python main.py postprocess --plots --graphs
-```
-
-## Multilevel Graphs
-
-The graph analysis pipeline now supports:
-
-- `G0`: full timed causal trace.
-- `G1`: time contraction created by `TimeContractionScheme`.
-- `G2`: agent/state clustering created by `AgentClusteringScheme`.
-
-`G0` is built from causal node and edge logs. `TimeContractionScheme` contracts
-time while preserving state identity:
+Depending on the enabled configuration, it may contain:
 
 ```text
-AgentNameID_State@t
-AgentNameID_State@t+1
-    -> AgentNameID_State
+tick_metrics.csv
+g0_nodes.jsonl
+g0_edges.jsonl
 ```
 
-Different states remain distinct supernodes, so a transition such as
-`Monomer -> Misfolded` is preserved as a G1 edge.
+In distributed runs, rank-local log files may be generated and merged at the end of the simulation.
 
-G1 superedges summarize repeated interactions with:
+### Tick metrics
 
-```python
-{
-    "count": int,
-    "total_effect": float,
-    "mean_effect": float,
-    "first_seen": int,
-    "last_seen": int,
-    "sign": "+" | "-" | "state" | "structural"
-}
+`tick_metrics.csv` contains global values recorded during the simulation, including:
+
+* debris;
+* inflammation;
+* dopamine;
+* healthy neurons;
+* compromised neurons;
+* apoptotic neurons;
+* neuronal ruptures;
+* free alpha-synuclein;
+* alpha-synuclein contained in aggregates.
+
+---
+
+## Project Structure
+
+```text
+Parkinson-Simulation/
+├── app.py                  # Streamlit dashboard entry point
+├── main.py                 # Main command-line interface
+├── requirements.txt        # Python dependencies
+├── dashboard/              # Streamlit pages and dashboard utilities
+├── src/
+│   ├── simulation/         # Simulation engine and biological agents
+│   ├── analysis/           # Validation, metrics and graph generation
+│   └── visualization/      # Plot generation
+├── specifics/              # Technical specifications and documentation
+├── tests/                  # Automated tests
+└── output/                 # Generated runtime and analysis outputs
 ```
 
-Build and export G1 and G2:
+---
 
-```powershell
+## Troubleshooting
+
+### `mpiexec: command not found`
+
+MPI is not installed or is not available in `PATH`.
+
+On Ubuntu or Debian:
+
+```bash
+sudo apt install openmpi-bin libopenmpi-dev
+```
+
+On macOS:
+
+```bash
+brew install open-mpi
+```
+
+### `ModuleNotFoundError`
+
+Make sure the virtual environment is active and reinstall the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### `mpi4py` installation fails
+
+Install MPI before installing the Python requirements, then retry:
+
+```bash
+pip install --force-reinstall mpi4py
+```
+
+### Streamlit does not start
+
+Verify that Streamlit is installed:
+
+```bash
+python -m streamlit --version
+```
+
+Then start the dashboard through Python:
+
+```bash
+python -m streamlit run app.py
+```
+
+### Port 8501 is already in use
+
+Start Streamlit on another port:
+
+```bash
+streamlit run app.py --server.port 8502
+```
+
+### Graph export uses too much memory
+
+Avoid exporting G0 unless it is required:
+
+```bash
 python main.py graphs
 ```
 
-`g0.gexf` can be very large, so it is opt-in:
+instead of:
 
-```powershell
+```bash
 python main.py graphs --write-g0
 ```
 
-Default graph outputs:
+---
+
+## Documentation
+
+Additional technical information is available under:
 
 ```text
-output/analysis/graphs/g1.gexf
-output/analysis/graphs/g2.gexf
-output/analysis/graphs/multilevel_report.md
+specifics/
 ```
 
-GEXF exports are Gephi-ready. The external `MultilevelGraph` object can also be
-instantiated with `--external-multilevelgraph`, but the default CLI path avoids
-that extra cost on large traces.
-
-For the full multilevel plan, see:
+In particular:
 
 ```text
+specifics/parameters_guide.md
 specifics/multilevel.md
 ```
 
-or click [here](specifics/multilevel.md).
+The same documentation can also be accessed from the **Docs** section of the Streamlit dashboard.
 
-## Testing
+---
 
-Run tests from the repository root:
+## License
 
-```powershell
-python -m pytest
-```
+This project is distributed under the MIT License. See `LICENSE` for details.
 
-Some graph tests skip automatically when `networkx` is not installed. Simulation
-tests require the Repast4Py/MPI runtime.
+---
 
-## Current Modeling Notes
+## Academic Context
 
-This is still an exploratory simulation. Parameter tuning is expected. The
-current logging and graph infrastructure is designed to make that tuning
-observable: if a run converges too quickly, produces too much pathology or hides
-an expected mechanism, the causal logs and mechanism metrics should make the
-failure mode inspectable.
+This framework was developed as part of the Distributed Calculus and Coordination and Multi-Agent Systems Lab courses held by Prof. Emanuela Merelli at the University of Camerino.

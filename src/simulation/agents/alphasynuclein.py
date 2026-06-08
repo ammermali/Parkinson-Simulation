@@ -151,34 +151,6 @@ class AlphaSynuclein(AdaptiveAgent):
             else:
                 probability = self.pr_oligomerization()
             self.wants_oligomerization = draw < probability
-            if self.wants_oligomerization:
-                logger = event_logger_from(self)
-                if logger is not None:
-                    source = logger.internal_field_node(
-                        self.owner_neuron,
-                        "local_aggregate_density",
-                        "1_perception",
-                        p.local_aggregate_density
-                    )
-                    action = logger.action_node(
-                        self,
-                        "wants_oligomerization",
-                        "3_action_selection",
-                        owner=self.owner_neuron,
-                        compartment=self.compartment
-                    )
-                    logger.edge(
-                        source,
-                        action,
-                        "action_selection",
-                        "alpha_oligomerization_intention",
-                        rule_id="ALPHA_OLIGOMERIZATION_INTENTION",
-                        probability=probability,
-                        rng_value=draw,
-                        outcome="selected",
-                        compartment=self.compartment,
-                        owner_uid=uid_of(self.owner_neuron)
-                    )
             self.misfolded_ticks += 1
         return self.state
 

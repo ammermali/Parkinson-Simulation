@@ -131,14 +131,6 @@ class Mitochondrion(AdaptiveAgent):
             else:
                 self.pending_action = MitochondrionAction.REDUCE_DEMAND
         logger = event_logger_from(self)
-        if logger is not None and self.pending_action is not None:
-            logger.action_selection(
-                self,
-                self.pending_action,
-                "mitochondrion_state_action_policy",
-                owner=self.owner_neuron,
-                compartment="Intracellular"
-            )
         return self.pending_action
 
     def do(self, model):

@@ -100,9 +100,6 @@ class Microglia(AdaptiveAgent):
                 self.pending_action = MicrogliaAction.INFLAMMATION
             else:
                 self.pending_action = MicrogliaAction.SCAN
-        logger = event_logger_from(self)
-        if logger is not None:
-            logger.action_selection(self, self.pending_action, "microglia_state_action_policy")
         return self.pending_action
 
     def do(self, model):
@@ -161,37 +158,6 @@ class Microglia(AdaptiveAgent):
         logger = event_logger_from(self)
         if logger is None:
             return
-        if self.state == MicrogliaState.CLEARING:
-            source = logger.env_field_node("SN.extracellular_debris", "extracellular_debris", "1_perception", p.extracellular_debris)
-            logger.threshold_trigger(
-                source,
-                self,
-                self.state,
-                "microglia_clearing_by_debris_pressure",
-                "MICROGLIA_CLEARING_DEBRIS_PRESSURE",
-                "extracellular_debris pressure > 0"
-            )
-        elif self.state == MicrogliaState.ACTIVATED:
-            if self._inflammation_pressure(p) > 0:
-                source = logger.env_field_node("SN.inflammation_level", "inflammation_level", "1_perception", p.inflammation_level)
-                logger.threshold_trigger(
-                    source,
-                    self,
-                    self.state,
-                    "microglia_activation_by_inflammation",
-                    "MICROGLIA_ACTIVATION_INFLAMMATION_HIGH",
-                    "inflammation pressure > 0"
-                )
-            elif self._alpha_pressure(p) > 0:
-                source = logger.env_field_node("SN.nearby_alpha_density", "nearby_alpha_density", "1_perception", p.nearby_alpha)
-                logger.threshold_trigger(
-                    source,
-                    self,
-                    self.state,
-                    "microglia_activation_by_nearby_alpha",
-                    "MICROGLIA_ACTIVATION_ALPHA_HIGH",
-                    "nearby_alpha pressure > 0"
-                )
         logger.state_transition(
             self,
             old_state,

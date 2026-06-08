@@ -89,9 +89,6 @@ class Astrocyte(AdaptiveAgent):
                 self.pending_action = AstrocyteAction.INFLAMMATION
             else:
                 self.pending_action = AstrocyteAction.SUPPORT
-        logger = event_logger_from(self)
-        if logger is not None:
-            logger.action_selection(self, self.pending_action, "astrocyte_state_action_policy")
         return self.pending_action
 
     def do(self, model):
@@ -134,29 +131,6 @@ class Astrocyte(AdaptiveAgent):
         """Log only event predicates that produced an astrocyte transition."""
 
         logger = event_logger_from(self)
-        if logger is None:
-            return
-        if self.state == AstrocyteState.REACTIVE:
-            if p.inflammation_level >= self.cfg.inflammation_high_threshold:
-                source = logger.env_field_node("SN.inflammation_level", "inflammation_level", "1_perception", p.inflammation_level)
-                logger.threshold_trigger(
-                    source,
-                    self,
-                    self.state,
-                    "astrocyte_reactive_by_inflammation",
-                    "ASTROCYTE_REACTIVE_STRESS_HIGH",
-                    "inflammation_level >= inflammation_high_threshold"
-                )
-            elif p.extracellular_debris >= self.cfg.debris_high_threshold:
-                source = logger.env_field_node("SN.extracellular_debris", "extracellular_debris", "1_perception", p.extracellular_debris)
-                logger.threshold_trigger(
-                    source,
-                    self,
-                    self.state,
-                    "astrocyte_reactive_by_debris",
-                    "ASTROCYTE_REACTIVE_STRESS_HIGH",
-                    "extracellular_debris >= debris_high_threshold"
-                )
         logger.state_transition(
             self,
             old_state,

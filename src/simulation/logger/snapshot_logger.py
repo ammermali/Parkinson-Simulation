@@ -8,6 +8,7 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class SnapshotRecord:
+    run_id: Optional[str]
     tick: int
     rank: int
     uid: str
@@ -15,19 +16,21 @@ class SnapshotRecord:
     state: Optional[str]
     x: int
     y: int
+    z: int
     compartment: Optional[str]
     owner_uid: Optional[str]
     aggregate_id: Optional[int]
 
 
 class SnapshotLogger:
-    def __init__(self, rank: int, comm=None, output_dir: Path | str = "output/run_logs", rank_output_dir: Path | str | None = None, enabled: bool = False):
+    def __init__(self, rank: int, comm=None, output_dir: Path | str = "output/run_logs", rank_output_dir: Path | str | None = None, enabled: bool = False, run_id: Optional[str] = None):
         self.rank = rank
         self.comm = comm
         self.output_dir = Path(output_dir)
         self.rank_output_dir = resolve_rank_output_dir(self.output_dir, rank_output_dir)
-        self.path = self.rank_output_dir / f"snapshots_rank{self.rank}.jsonl"
-        self.merged_path = self.output_dir / "snapshots.jsonl"
+        self.run_id = run_id
+        self.path = self.rank_output_dir / f"spatial_snapshots_rank{self.rank}.jsonl"
+        self.merged_path = self.output_dir / "spatial_snapshots.jsonl"
         self.enabled = enabled
         self._stream = None
         if not self.enabled:
@@ -44,6 +47,7 @@ class SnapshotLogger:
         if not self.enabled or self._stream is None or position is None:
             return
         record = SnapshotRecord(
+            run_id=self.run_id,
             tick=int(tick),
             rank=self.rank,
             uid=uid_of(agent) or "",
@@ -51,6 +55,7 @@ class SnapshotLogger:
             state=value_of(getattr(agent, "state", None)),
             x=int(getattr(position, "x")),
             y=int(getattr(position, "y")),
+            z=int(getattr(position, "z", 0)),
             compartment=value_of(getattr(agent, "compartment", None)),
             owner_uid=uid_of(getattr(agent, "owner_neuron", None)),
             aggregate_id=getattr(agent, "aggregate_id", None)
@@ -66,7 +71,7 @@ class SnapshotLogger:
             self._stream = None
         self._barrier()
         if self.rank == 0:
-            self._merge_rank_files("snapshots_rank*.jsonl", self.merged_path, source_dir=self.rank_output_dir)
+            self._merge_rank_files("spatial_snapshots_rank*.jsonl", self.merged_path, source_dir=self.rank_output_dir)
         self._barrier()
 
     def _merge_rank_files(self, pattern: str, destination: Path, *, source_dir: Path) -> None:

@@ -31,6 +31,7 @@ class EventLogger:
         self.rank_output_dir = resolve_rank_output_dir(self.output_dir, rank_output_dir)
         self.enabled = enabled
         self.model_version = model_version
+        self.run_id = run_id
         self.current_tick = 0
         self._event_index = 0
         self.path = self.rank_output_dir / f"events_rank{self.rank}.jsonl"
@@ -43,6 +44,22 @@ class EventLogger:
         self.path.write_text("", encoding="utf-8")
         if self.rank == 0:
             self.merged_path.write_text("", encoding="utf-8")
+            self.metadata_path.write_text(
+                json.dumps(
+                    compact_dict(
+                        {
+                            "run_id": self.run_id,
+                            "model_version": self.model_version,
+                            "format": "semantic_events_jsonl",
+                            "event_types": sorted(EVENT_TYPES),
+                        }
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
         self._barrier()
 
     def set_tick(self, tick: int) -> None:
@@ -54,6 +71,7 @@ class EventLogger:
         from_state: Any,
         to_state: Any,
         mechanism: str,
+        rule_id: Optional[str] = None,
         probability: Optional[float] = None,
         rng_value: Optional[float] = None,
         outcome: Optional[str] = "transitioned",
@@ -67,7 +85,8 @@ class EventLogger:
             mechanism=mechanism,
             actor=agent_ref(agent, state_before=from_state, state_after=to_state, owner=owner, compartment=compartment),
             stochastic=stochastic_info(probability=probability, rng_value=rng_value, outcome=outcome),
-            outcome=outcome
+            outcome=outcome,
+            context=compact_dict({"rule_id": rule_id})
         )
 
     def threshold_trigger(
@@ -76,6 +95,8 @@ class EventLogger:
         target_agent,
         target_state: Any,
         mechanism: str,
+        rule_id: Optional[str] = None,
+        description: Optional[str] = None,
         owner=None,
         compartment=None
     ) -> None:
@@ -84,7 +105,42 @@ class EventLogger:
             mechanism=mechanism,
             actor=field_ref(source),
             target=agent_ref(target_agent, state_after=target_state, owner=owner, compartment=compartment),
-            outcome="triggered"
+            outcome="triggered",
+            context=compact_dict({"rule_id": rule_id, "description": description})
+        )
+
+    def internal_field_node(self, owner, field: str, stage: str, value: Any, **context: Any) -> dict[str, Any]:
+        return compact_dict(
+            {
+                "uid": f"{uid_of(owner) or 'unknown'}:{field}:{stage}",
+                "type": "InternalField",
+                "field": field,
+                "value": value,
+                "scope": "agent_internal",
+                "owner_uid": uid_of(owner),
+                "compartment": "Intracellular",
+                **context,
+            }
+        )
+
+    def aggregate_snapshot(self, aggregate, aggregate_id: Optional[int] = None, owner=None, **context: Any) -> None:
+        self.record_event(
+            event_type="aggregation",
+            mechanism="aggregate_snapshot",
+            actor=agent_ref(
+                aggregate,
+                state=getattr(aggregate, "state", None),
+                owner=owner,
+                compartment="Intracellular" if owner is not None else getattr(aggregate, "compartment", None),
+                extra=compact_dict(
+                    {
+                        "aggregate_id": aggregate_id or getattr(aggregate, "aggregate_id", None),
+                        "size": getattr(aggregate, "size", None),
+                    }
+                ),
+            ),
+            outcome="snapshot",
+            context=compact_dict(context)
         )
 
     def field_effect(

@@ -3,7 +3,7 @@ import argparse
 import json
 from collections import Counter
 from pathlib import Path
-from src.analysis.data.artifacts import load_jsonl as _data_load_jsonl, resolve_log_dir
+from src.analysis.data.run_data import load_jsonl as _data_load_jsonl, resolve_log_dir
 
 DEFAULT_SIMULATION_LOG_DIR = Path("output/run_logs")
 DEFAULT_ANALYSIS_OUTPUT = Path("output/validation_reports/initialization_validation_latest.json")
@@ -50,8 +50,7 @@ def validate_initialization(output_dir: Path) -> dict:
         "intracellular_agents_missing_owner_uid": intracellular_missing_owner,
         "agents_missing_config": missing_config,
         "malformed_positions": malformed_positions,
-        "neuron_containment_summary": manifest.get("neurons", {})
-    }
+        "neuron_containment_summary": manifest.get("neurons", {})}
 
 
 def main() -> None:
@@ -60,7 +59,6 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_ANALYSIS_OUTPUT, help="JSON destination for the validation report.")
     parser.add_argument("--stdout", action="store_true", help="Print the report instead of writing output/validation_reports.")
     args = parser.parse_args()
-
     report = validate_initialization(args.output_dir)
     payload = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
     if args.stdout:

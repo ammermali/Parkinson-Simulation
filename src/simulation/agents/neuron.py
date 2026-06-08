@@ -146,38 +146,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.ticks_in_state = 0
         logger = event_logger_from(self)
         if logger is not None:
-            self._log_damage_decision(
-                logger,
-                old_state,
-                external_stress,
-                internal_damage,
-                candidate_state,
-                final_state,
-                block_reasons,
-            )
-            if old_state != self.state and external_stress > 0:
-                source = logger.env_field_node("SN.external_stress", "external_stress", "1_perception", external_stress)
-                logger.threshold_trigger(
-                    source,
-                    self,
-                    self.state,
-                    "neuron_state_by_external_stress",
-                    "NEURON_DAMAGE_ACCUMULATION",
-                    "external_stress contributes to total_stress",
-                    compartment="Extracellular"
-                )
-            if old_state != self.state and internal_damage > 0:
-                source = logger.internal_field_node(self, "internal_damage", "1_perception", internal_damage)
-                logger.threshold_trigger(
-                    source,
-                    self,
-                    self.state,
-                    "neuron_state_by_internal_damage",
-                    "NEURON_DAMAGE_ACCUMULATION",
-                    "internal_damage contributes to total_stress",
-                    owner=self,
-                    compartment="Intracellular"
-                )
             if old_state != self.state:
                 logger.state_transition(
                     self,
@@ -256,23 +224,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
         elif state == NeuronState.APOPTOTIC:
             self.apoptotic_ticks_total += 1
 
-    def _log_damage_decision(self, logger, old_state: NeuronState, external_stress: float, internal_damage: float, candidate_state: NeuronState, final_state: NeuronState, block_reasons: list[str]):
-        """Write compact G0 nodes explaining neuron damage gating."""
-
-        logger.internal_field_node(self, "cell_damage", "2_state_update", self.cell_damage)
-        logger.internal_field_node(self, "internal_damage", "1_perception", internal_damage)
-        logger.internal_field_node(self, "external_stress", "1_perception", external_stress)
-        logger.internal_field_node(self, "ticks_in_state", "2_state_update", self.ticks_in_state)
-        logger.internal_field_node(self, "old_state", "2_state_update", old_state.value)
-        logger.internal_field_node(self, "candidate_state", "2_state_update", candidate_state.value)
-        logger.internal_field_node(self, "final_state_after_gating", "2_state_update", final_state.value)
-        logger.internal_field_node(
-            self,
-            "transition_block_reason",
-            "2_state_update",
-            "|".join(block_reasons) if block_reasons else "none"
-        )
-
     def action(self) -> Optional[NeuronAction]:
         """Choose the neuron-level action for this tick."""
         if self.last_perception is None:
@@ -302,9 +253,6 @@ class Neuron(InternalHabitatMixin, AdaptiveAgent):
             self.pending_action = NeuronAction.R_DOPAMINE
         else:
             self.pending_action = NeuronAction.STRESS
-        logger = event_logger_from(self)
-        if logger is not None:
-            logger.action_selection(self, self.pending_action, "neuron_state_action_policy")
         return self.pending_action
 
     def do(self, model):

@@ -122,7 +122,7 @@ class Lysosome(AdaptiveAgent):
             )
         return self.state
 
-    def action(self) -> LysosomeAction:
+    def action(self) -> LysosomeAction | None:
         """Choose the next operation from the current state and assignment."""
         if self.state == LysosomeState.INACTIVE:
             self.pending_action = LysosomeAction.SCAN
@@ -133,15 +133,6 @@ class Lysosome(AdaptiveAgent):
                 self.pending_action = LysosomeAction.DEGRADE
         elif self.state == LysosomeState.OVERWHELMED:
             self.pending_action = LysosomeAction.IDLE
-        logger = event_logger_from(self)
-        if logger is not None and self.pending_action is not None:
-            logger.action_selection(
-                self,
-                self.pending_action,
-                "lysosome_state_action_policy",
-                owner=self.owner_neuron,
-                compartment="Intracellular"
-            )
         return self.pending_action
 
     def do(self, model):

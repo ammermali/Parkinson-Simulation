@@ -178,16 +178,33 @@ class ParkinsonModel:
         reporter = getattr(self, "reporter", None)
         if reporter is not None:
             reporter.begin_tick(self.tick_count)
+            reporter.log_stage_start("environment.begin_tick")
         self.environment.begin_tick()
+        if reporter is not None:
+            reporter.log_stage_end("environment.begin_tick")
         # Use a list snapshot because agents can release or absorb alpha during
         # a step. Iterating over the live context while it mutates would be
         # brittle and can skip agents.
-        for agent in list(self.context.agents()):
+        agents = list(self.context.agents())
+        if reporter is not None:
+            reporter.log_stage_start("agents", f"count={len(agents)}")
+        for agent in agents:
             if hasattr(agent, "step"):
                 agent.step(self)
+        if reporter is not None:
+            reporter.log_stage_end("agents")
+            reporter.log_stage_start("external_movement")
         self._move_external_agents()
+        if reporter is not None:
+            reporter.log_stage_end("external_movement")
+            reporter.log_stage_start("mpi_effect_sync")
         self._synchronize_environment_effects()
+        if reporter is not None:
+            reporter.log_stage_end("mpi_effect_sync")
+            reporter.log_stage_start("environment.commit")
         self.environment.commit_effects(max_possible_dopamine=self._max_possible_dopamine())
+        if reporter is not None:
+            reporter.log_stage_end("environment.commit")
         if reporter is not None:
             reporter.record_tick()
         self._stop_if_complete()
@@ -407,7 +424,6 @@ class ParkinsonModel:
 
     def _local_final_metrics(self) -> dict[str, float]:
         """Collect final metrics for this rank.
-
         Kept as a thin compatibility wrapper around the metrics module so older
         tests and notebooks can still inspect local metrics through the model.
         """
@@ -416,7 +432,6 @@ class ParkinsonModel:
 
     def _log_completion(self) -> None:
         """Emit final progress and summary logs through the runtime reporter."""
-
         reporter = getattr(self, "reporter", None)
         if reporter is not None:
             reporter.log_completion()

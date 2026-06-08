@@ -37,4 +37,7 @@ logging:
   tick_metrics_csv: true
   progress_stdout: true
   progress_interval: 25
+  stage_stdout: true
+  stage_first_ticks: 3
+  stage_interval: 25
   summary_stdout: true

@@ -4,14 +4,7 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Optional
-
-from src.analysis.data.artifacts import (
-    RunArtifacts,
-    iter_jsonl as _data_iter_jsonl,
-    iter_many_jsonl as _data_iter_many_jsonl,
-    jsonl_paths as _data_jsonl_paths,
-    rank_file_sort_key as _data_rank_file_sort_key,
-)
+from src.analysis.data.run_data import RunData
 
 LYSOSOME_DEGRADATION_MECHANISMS = {"lysosome_degradation_success", "lysosome_degradation_failure", "lysosome_overwhelmed_by_target"}
 
@@ -27,7 +20,6 @@ class NumericSummary:
         self.total = 0.0
         self.minimum: Optional[float] = None
         self.maximum: Optional[float] = None
-
     def add(self, value) -> None:
         if not isinstance(value, (int, float)):
             return
@@ -36,38 +28,27 @@ class NumericSummary:
         self.total += number
         self.minimum = number if self.minimum is None else min(self.minimum, number)
         self.maximum = number if self.maximum is None else max(self.maximum, number)
-
     def as_dict(self) -> dict:
         if self.count == 0:
             return {"count": 0, "mean": None, "min": None, "max": None}
         return {"count": self.count, "mean": self.total / self.count, "min": self.minimum, "max": self.maximum}
 
 
-def iter_jsonl(path: Path) -> Iterable[dict]:
-    yield from _data_iter_jsonl(path)
-
 def summarize_mechanisms(output_dir: Path, include_by_tick: bool = True) -> dict:
-    event_artifacts = RunArtifacts.resolve(output_dir, required_stems=("events",))
-    artifacts = event_artifacts if event_artifacts.event_paths else RunArtifacts.resolve(output_dir, required_stems=("g0_edges",))
-    node_paths = artifacts.g0_node_paths
-    edge_paths = artifacts.g0_edge_paths
-    event_paths = artifacts.event_paths
+    run_data = RunData.resolve(output_dir, required_stems=("events",))
+    event_paths = run_data.event_paths
     metrics = _new_metrics(include_by_tick)
-    for node in _iter_many(node_paths):
-        _count_general_node(metrics, node)
-    edge_rows = (
-        (_event_as_metric_edge(event) for event in artifacts.iter_events())
-        if event_paths
-        else _iter_many(edge_paths)
-    )
-    for edge in edge_rows:
+    for event in run_data.iter_events():
+        for node in _event_as_node_observations(event):
+            _count_general_node(metrics, node)
+        edge = _event_as_metric_edge(event)
         _count_general_edge(metrics, edge)
         _count_alpha_mechanism(metrics, edge)
         _count_lysosome_mechanism(metrics, edge)
         _count_mitochondrion_mechanism(metrics, edge)
         _count_neuron_mechanism(metrics, edge)
         _count_glial_mechanism(metrics, edge)
-    return _finalize_metrics(artifacts.log_dir, edge_paths, metrics, include_by_tick, event_paths=event_paths)
+    return _finalize_metrics(run_data.log_dir, metrics, include_by_tick, event_paths=event_paths)
 
 
 def _new_metrics(include_by_tick: bool) -> dict:
@@ -93,9 +74,7 @@ def _new_metrics(include_by_tick: bool) -> dict:
         "lysosome": {
             "degradation_attempts": Counter(),
             "degradation_by_target_type": defaultdict(Counter),
-            "degradation_by_outcome": Counter(),
-            "target_registrations": Counter(),
-            "target_assignments": Counter()
+            "degradation_by_outcome": Counter()
         },
         "mitochondrion": {"lifecycle_transitions": Counter()},
         "neuron": {"state_transitions": Counter(), "actions": Counter()},
@@ -106,15 +85,20 @@ def _new_metrics(include_by_tick: bool) -> dict:
             "aggregate_uids": set(),
             "lewy_body_aggregate_uids": set(),
             "aggregate_max_size_by_uid": {},
-            "lewy_body_max_size_by_uid": {}
+            "lewy_body_max_size_by_uid": {},
+            "observed_node_keys": set()
         }
     }
 
 
 def _count_general_node(metrics: dict, node: dict) -> None:
+    node_key = (node.get("kind"), node.get("agent_type"), node.get("uid"), node.get("state"), _tick(node))
+    if node_key in metrics["nodes"]["observed_node_keys"]:
+        return
+    metrics["nodes"]["observed_node_keys"].add(node_key)
     if node.get("kind") == "aggregate" and node.get("agent_type") == "AlphaAggregate":
         state = node.get("state") or "unknown"
-        uid = node.get("uid") or node.get("g1_key") or "unknown"
+        uid = node.get("uid") or "unknown"
         size = _numeric_value(node.get("value"))
         nodes = metrics["nodes"]
         nodes["aggregate_state_observations"][state] += 1
@@ -177,27 +161,16 @@ def _count_lysosome_mechanism(metrics: dict, edge: dict) -> None:
     target_type = edge.get("target_type") or "unknown"
     target_state = edge.get("target_state") or "unknown"
     lysosome = metrics["lysosome"]
-    if mechanism == "neuron_registers_degradation_target":
-        lysosome["target_registrations"][target_type] += 1
-        return
-
-    if mechanism == "lysosome_selects_degradation_target":
-        lysosome["target_assignments"][target_type] += 1
-        return
-
     if edge.get("relation") != "degradation":
         return
-
     if mechanism not in LYSOSOME_DEGRADATION_MECHANISMS:
         return
-
     if mechanism == "lysosome_degradation_success":
         result = "success"
     elif mechanism == "lysosome_degradation_failure":
         result = "failure"
     else:
         result = "overwhelmed"
-
     lysosome["degradation_attempts"][result] += 1
     lysosome["degradation_by_target_type"][target_type][result] += 1
     lysosome["degradation_by_outcome"][edge.get("outcome") or "unknown"] += 1
@@ -234,7 +207,7 @@ def _count_glial_mechanism(metrics: dict, edge: dict) -> None:
         metrics["glia"]["astrocyte_actions"][edge.get("target_state") or "unknown"] += 1
 
 
-def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, include_by_tick: bool, *, event_paths: Optional[list[Path]] = None) -> dict:
+def _finalize_metrics(output_dir: Path, metrics: dict, include_by_tick: bool, *, event_paths: Optional[list[Path]] = None) -> dict:
     alpha = metrics["alpha"]
     lysosome = metrics["lysosome"]
     nodes = metrics["nodes"]
@@ -246,11 +219,9 @@ def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, i
     )
     success_count = lysosome["degradation_attempts"]["success"]
     overwhelm_count = lysosome["degradation_attempts"]["overwhelmed"]
-
     report = {
         "output_dir": str(output_dir),
         "input_event_files": [str(path) for path in event_paths or []],
-        "input_edge_files": [str(path) for path in edge_paths],
         "total_edges": metrics["total_edges"],
         "selected_mechanisms": {
             "alpha_synuclein": {
@@ -281,15 +252,6 @@ def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, i
                 "lewy_body_maturations": metrics["mechanism_counts"]["aggregate_matures_to_lewy_body"],
             },
             "lysosome": {
-                "targets_registered": {
-                    "total": sum(lysosome["target_registrations"].values()),
-                    "by_target_type": _counter_dict(lysosome["target_registrations"]),
-                },
-                "successful_target_claims": {
-                    "total": sum(lysosome["target_assignments"].values()),
-                    "by_target_type": _counter_dict(lysosome["target_assignments"]),
-                    "note": "Counts lysosome_selects_degradation_target only; neuron_assigns_degradation_target is the same claim seen from the neuron buffer.",
-                },
                 "degradation_attempts": {
                     "total": degradation_total,
                     "success": success_count,
@@ -323,7 +285,7 @@ def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, i
                 "microglia_debris_clearance": metrics["mechanism_counts"]["microglia_debris_clearance"],
                 "microglia_inflammation_release": metrics["mechanism_counts"]["microglia_inflammation_release"],
                 "astrocyte_support_inflammation_reduction": metrics["mechanism_counts"]["astrocyte_support_inflammation_reduction"],
-                "astrocyte_reactive_inflammation_release": metrics["mechanism_counts"]["astrocyte_reactive_inflammation_release"],
+                "astrocyte_reactive_inflammation_release": metrics["mechanism_counts"]["astrocyte_reactive_inflammation_release"]
             },
         },
         "all_mechanisms": {
@@ -335,12 +297,12 @@ def _finalize_metrics(output_dir: Path, edge_paths: list[Path], metrics: dict, i
             "target_types": _nested_counter_dict(metrics["target_types_by_mechanism"]),
             "source_target_pairs": _nested_counter_dict(metrics["source_target_pairs_by_mechanism"]),
             "probability_summary": _numeric_summary_dict(metrics["probabilities_by_mechanism"]),
-            "rng_summary": _numeric_summary_dict(metrics["rng_values_by_mechanism"]),
+            "rng_summary": _numeric_summary_dict(metrics["rng_values_by_mechanism"])
         },
         "coverage_notes": [
-            "Lewy body formation, lysosome success/failure/overwhelming and target claims are counted from explicit causal edges.",
+            "Lewy body formation and lysosome success/failure/overwhelming are counted from explicit biological event rows.",
             "aggregation_events_inferred groups alpha_added_to_aggregate edges by tick, owner and aggregate target; member additions remain the exact logged count.",
-            "Actual alpha release and absorption are currently visible mainly through neuron action-selection edges unless dedicated transfer edges are added to the runtime logger.",
+            "Action-policy and target-assignment bookkeeping is intentionally excluded from the semantic event contract.",
         ]
     }
     if include_by_tick:
@@ -362,15 +324,12 @@ def _event_as_metric_edge(event: dict) -> dict:
     stochastic = event.get("stochastic") or {}
     event_type = event.get("event_type") or "unknown"
     relation = {
-        "action_selected": "action_selection",
         "field_change": "field_effect" if effect.get("scope") == "environment" else "internal_field_effect",
     }.get(event_type, event_type)
     source_state = actor.get("state_before") or actor.get("state")
     target_state = target.get("state_after") or target.get("state")
     if event_type == "state_transition":
         target_state = actor.get("state_after")
-    if event_type == "action_selected":
-        target_state = (event.get("context") or {}).get("action")
     return {
         "tick": event.get("tick"),
         "mechanism": event.get("mechanism") or "unknown",
@@ -387,8 +346,38 @@ def _event_as_metric_edge(event: dict) -> dict:
         "probability": stochastic.get("probability"),
         "rng_value": stochastic.get("rng_value"),
         "effect_value": effect.get("delta"),
-        "rule_id": event.get("rule_id") or (event.get("context") or {}).get("rule_id"),
+        "rule_id": event.get("rule_id") or (event.get("context") or {}).get("rule_id")
     }
+
+
+def _event_as_node_observations(event: dict) -> Iterable[dict]:
+    tick = event.get("tick")
+    event_type = event.get("event_type")
+    actor = event.get("actor") or {}
+    target = event.get("target") or {}
+    if event_type == "state_transition":
+        yield from _node_observations_from_ref(actor, tick, states=(actor.get("state_before"), actor.get("state_after")))
+        return
+    yield from _node_observations_from_ref(actor, tick)
+    yield from _node_observations_from_ref(target, tick)
+
+
+def _node_observations_from_ref(ref: dict, tick, *, states: tuple | None = None) -> Iterable[dict]:
+    if not isinstance(ref, dict) or not ref.get("type"):
+        return
+    observed_states = states or (ref.get("state"), ref.get("state_after"), ref.get("state_before"))
+    for state in observed_states:
+        if state is None:
+            continue
+        agent_type = ref.get("type")
+        yield {
+            "kind": "aggregate" if agent_type == "AlphaAggregate" else "agent_state",
+            "agent_type": agent_type,
+            "uid": ref.get("uid"),
+            "state": state,
+            "tick": tick,
+            "value": ref.get("size"),
+        }
 
 
 def _first_effect(event: dict) -> dict:
@@ -397,17 +386,6 @@ def _first_effect(event: dict) -> dict:
         return {}
     first = effects[0]
     return first if isinstance(first, dict) else {}
-
-def _log_paths(output_dir: Path, stem: str) -> list[Path]:
-    return _data_jsonl_paths(output_dir, stem)
-
-def _iter_many(paths: list[Path]) -> Iterable[dict]:
-    yield from _data_iter_many_jsonl(paths)
-
-
-def _rank_file_sort_key(path: Path) -> tuple[int, str]:
-    return _data_rank_file_sort_key(path)
-
 
 def _tick(edge: dict) -> int:
     try:
@@ -467,7 +445,7 @@ def _numeric_summary_dict(summaries: dict[str, NumericSummary]) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Count biological mechanisms from G0 causal trace logs.")
+    parser = argparse.ArgumentParser(description="Count biological mechanisms from simulation event logs.")
     parser.add_argument("output_dirs", nargs="*", type=Path, default=[DEFAULT_SIMULATION_LOG_DIR])
     parser.add_argument("--no-by-tick", action="store_true", help="Omit per-tick mechanism counts from the report.")
     parser.add_argument("--output", type=Path, default=DEFAULT_ANALYSIS_OUTPUT, help="JSON destination for the report.")

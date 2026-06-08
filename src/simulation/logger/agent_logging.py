@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Optional
 
 
-LOGGER_METHODS = ("record_event", "state_transition", "action_selection", "field_effect", "internal_field_effect", "degradation", "aggregation")
+LOGGER_METHODS = ("record_event", "state_transition", "field_effect", "internal_field_effect", "degradation", "aggregation")
 LOGGER_ATTRS = ("event_logger", "causal_logger", "logger")
 REPORTER_ATTRS = ("reporter", "runtime_reporter")
 
@@ -56,8 +56,6 @@ def _is_logger_like(value) -> bool:
 
 
 def uid_of(agent) -> Optional[str]:
-    """Return a stable string uid for Repast and test agents."""
-
     if agent is None:
         return None
     uid = getattr(agent, "uid", None)
@@ -74,8 +72,6 @@ def uid_of(agent) -> Optional[str]:
 
 
 def value_of(value: Any) -> Optional[str]:
-    """Return enum values and other objects as stable strings."""
-
     if value is None:
         return None
     if isinstance(value, Enum):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 from pathlib import Path
 from typing import Any, Optional, TYPE_CHECKING
 from src.simulation.agents.aggregate import AlphaAggregate
@@ -24,6 +25,8 @@ class RuntimeReporter:
     def __init__(self, model: ParkinsonModel, params: dict[str, Any]):
         self.model = model
         self.params = params
+        self._started_at = time.perf_counter()
+        self._log_initializing()
         self.output_root = self._resolve_output_dir(get_param(params, "logging.output_dir", DEFAULT_OUTPUT_ROOT))
         self.run_log_dir = self._resolve_layout_dir(params, "logging.run_log_dir", "run_logs")
         self.rank_log_dir = self._resolve_layout_dir(params, "logging.rank_log_dir", "logs_per_rank")
@@ -39,6 +42,7 @@ class RuntimeReporter:
         self.tick_metrics = None
         self._tick_metrics_file = None
         self._create_tick_metrics_csv(params)
+        self._log_logger_configuration()
 
     def _create_loggers(self, params: dict[str, Any]) -> tuple[EventLogger, InitializationLogger]:
         """Create canonical event and initialization loggers."""
@@ -83,9 +87,11 @@ class RuntimeReporter:
 
     # Per-tick reporting
     def begin_tick(self, tick: int) -> None:
+        self._current_tick_started_at = time.perf_counter()
         logger = self.event_logger
         if logger is not None:
             logger.set_tick(tick)
+        self.log_stage_start("tick")
 
     def record_scalar_tick(self) -> None:
         return
@@ -116,9 +122,11 @@ class RuntimeReporter:
             return
         scalars = self.model.environment.scalars
         print(
+            f"[tick] {getattr(self.model, 'tick_count', 0)} | "
             f"debris={scalars.extracellular_debris:.3f}, "
             f"inflammation={scalars.inflammation_level:.3f}, "
-            f"dopamine={scalars.dopamine_output:.3f}"
+            f"dopamine={scalars.dopamine_output:.3f}",
+            flush=True
         )
 
     def _log_progress_tick(self) -> None:
@@ -135,18 +143,47 @@ class RuntimeReporter:
             f"[progress] tick {tick}/{self.model.stop_at} ({progress:.1f}%) | "
             f"debris={scalars.extracellular_debris:.3f}, "
             f"inflammation={scalars.inflammation_level:.3f}, "
-            f"dopamine={scalars.dopamine_output:.3f}",
+            f"dopamine={scalars.dopamine_output:.3f} | "
+            f"{self._runtime_text(tick)}",
             flush=True
         )
 
     def record_tick(self) -> None:
+        self.log_stage_start("report")
         self.record_scalar_tick()
-        self.record_tick_metrics_csv()
-        self.record_spatial_tick()
         self.log_tick()
         self._log_progress_tick()
+        self.log_stage_start("report.tick_metrics")
+        self.record_tick_metrics_csv()
+        self.log_stage_end("report.tick_metrics")
+        self.log_stage_start("report.spatial")
+        self.record_spatial_tick()
+        self.log_stage_end("report.spatial")
+        self.log_stage_end("report")
 
     # Startup / completion
+    def _log_initializing(self) -> None:
+        if not self.progress_stdout_enabled():
+            return
+        print(
+            f"[progress] initializing run: ranks={self.model._comm_size()}, "
+            f"ticks={self.model.stop_at}, seed={self.model.seed}",
+            flush=True
+        )
+
+    def _log_logger_configuration(self) -> None:
+        if not self.progress_stdout_enabled():
+            return
+        print(
+            "[progress] logging: "
+            f"events={self._on_off(getattr(self.event_logger, 'enabled', False))}, "
+            f"initialization={self._on_off(getattr(self.initialization_logger, 'enabled', False))}, "
+            f"spatial={self._on_off(getattr(self.snapshot_logger, 'enabled', False))}, "
+            f"tick_metrics={self._on_off(getattr(self, 'tick_metrics_enabled', False))} | "
+            f"output={self.output_root}",
+            flush=True
+        )
+
     def log_startup(self) -> None:
         if not self.progress_stdout_enabled():
             return
@@ -154,7 +191,8 @@ class RuntimeReporter:
         total_agents = int(self.model._global_sum(local_agents))
         print(
             f"[progress] starting run: ranks={self.model._comm_size()}, "
-            f"ticks={self.model.stop_at}, agents={total_agents}, seed={self.model.seed}",
+            f"ticks={self.model.stop_at}, agents={total_agents}, seed={self.model.seed} | "
+            f"init={self._elapsed_seconds():.1f}s",
             flush=True
         )
 
@@ -170,7 +208,8 @@ class RuntimeReporter:
                 f"[progress] completed at tick {getattr(self.model, 'tick_count', 0)} | "
                 f"debris={scalars.extracellular_debris:.3f}, "
                 f"inflammation={scalars.inflammation_level:.3f}, "
-                f"dopamine={scalars.dopamine_output:.3f}",
+                f"dopamine={scalars.dopamine_output:.3f} | "
+                f"{self._runtime_text(getattr(self.model, 'tick_count', 0))}",
                 flush=True
             )
         if summary_enabled and metrics is not None:
@@ -181,6 +220,49 @@ class RuntimeReporter:
         if self.model.rank != 0:
             return False
         return bool(get_param(getattr(self, "params", {}), "logging.progress_stdout", True))
+
+    def stage_stdout_enabled(self) -> bool:
+        if self.model.rank != 0:
+            return False
+        return bool(get_param(getattr(self, "params", {}), "logging.stage_stdout", False))
+
+    def log_stage_start(self, stage: str, detail: str | None = None) -> None:
+        if not self._should_log_stage():
+            return
+        suffix = f" | {detail}" if detail else ""
+        print(f"[stage] tick {getattr(self.model, 'tick_count', 0)} {stage} start{suffix}", flush=True)
+
+    def log_stage_end(self, stage: str, detail: str | None = None) -> None:
+        if not self._should_log_stage():
+            return
+        suffix = f" | {detail}" if detail else ""
+        print(f"[stage] tick {getattr(self.model, 'tick_count', 0)} {stage} end | {self._tick_elapsed_text()}{suffix}", flush=True)
+
+    def _should_log_stage(self) -> bool:
+        if not self.stage_stdout_enabled():
+            return False
+        tick = getattr(self.model, "tick_count", 0)
+        first_ticks = max(0, int(get_param(getattr(self, "params", {}), "logging.stage_first_ticks", 3)))
+        interval = max(1, int(get_param(getattr(self, "params", {}), "logging.stage_interval", getattr(self.model, "progress_interval", 25))))
+        return tick <= first_ticks or tick % interval == 0 or tick >= getattr(self.model, "stop_at", tick + 1)
+
+    def _elapsed_seconds(self) -> float:
+        return max(0.0, time.perf_counter() - getattr(self, "_started_at", time.perf_counter()))
+
+    def _runtime_text(self, tick: int) -> str:
+        elapsed = self._elapsed_seconds()
+        if tick <= 0 or elapsed <= 0:
+            return f"elapsed={elapsed:.1f}s"
+        return f"elapsed={elapsed:.1f}s, rate={tick / elapsed:.2f} ticks/s"
+
+    def _tick_elapsed_text(self) -> str:
+        started_at = getattr(self, "_current_tick_started_at", None)
+        if started_at is None:
+            return f"elapsed={self._elapsed_seconds():.1f}s"
+        return f"tick_elapsed={time.perf_counter() - started_at:.3f}s"
+
+    def _on_off(self, value: Any) -> str:
+        return "on" if bool(value) else "off"
 
     def close(self) -> None:
         tick_metrics = getattr(self, "tick_metrics", None)

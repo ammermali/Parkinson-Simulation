@@ -3,7 +3,6 @@ import networkx as nx
 import pandas as pd
 import streamlit as st
 from dashboard.components.graph_compute_panel import render_graph_compute_panel
-from dashboard.components.graph_png_export_panel import render_graph_png_export_button
 from dashboard.components.g0_viewer import render_g0_graph
 from dashboard.services.g0_view_service import G0Entity, G0ViewError, G0ViewResult, G0ViewService
 
@@ -141,7 +140,6 @@ if result.node_count > 500:
 
 if result.edge_count == 0:
     st.info("The selected view contains nodes but no edges. Try increasing the causal radius or changing direction.")
-render_graph_png_export_button(result.graph, level="G0", name_hint=result.entity.key)
 render_g0_graph(result.graph, central_entity_key=result.entity.key)
 with st.expander("Inspect view data", expanded=False):
     render_graph_tables(service=service,graph=result.graph)

@@ -8,7 +8,7 @@ import networkx as nx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_G0_FULL_PATH = PROJECT_ROOT / "output" / "graphs" / "g0.gexf"
-DEFAULT_G0_LITE_PATH = PROJECT_ROOT / "output" / "graphs" / "g0.lite.gexf"
+DEFAULT_G0_LITE_PATH = PROJECT_ROOT / "output" / "graphs" / "g0.lite.gext"
 DEFAULT_G0_PATH = DEFAULT_G0_LITE_PATH
 Direction = Literal["incoming", "outgoing", "both"]
 

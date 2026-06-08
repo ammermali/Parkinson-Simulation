@@ -15,20 +15,13 @@ class GraphComputeResult:
     return_code: int
     stdout: str
     stderr: str
-    report_path: Path | None
-    report_text: str
 
     @property
     def success(self) -> bool:
         return self.return_code == 0
 
 class GraphComputeService:
-    """Run graph CLI entrypoints from the dashboard and read their reports."""
-    REPORT_PATHS = {
-        "G0": DEFAULT_GRAPH_DIR / "g0_build_report.md",
-        "G1": DEFAULT_GRAPH_DIR / "g1_build_report.md",
-        "G2": DEFAULT_GRAPH_DIR / "g2_build_report.md",
-        "G3": DEFAULT_GRAPH_DIR / "g3_topology_report.md"}
+    """Run graph CLI entrypoints from the dashboard."""
 
     def __init__(self, *, project_root: Path = PROJECT_ROOT, log_dir: Path = DEFAULT_LOG_DIR, graph_dir: Path = DEFAULT_GRAPH_DIR) -> None:
         self.project_root = Path(project_root)
@@ -38,11 +31,10 @@ class GraphComputeService:
     def compute(self, level: str) -> GraphComputeResult:
         level = level.upper()
         command = self.command_for(level)
-        report_path = self.report_path_for(level)
         if level == "G3" and not (self.graph_dir / "g2.gexf").exists():
-            return GraphComputeResult(level=level, command=command, return_code=1, stdout="", stderr=f"G3 requires an existing G2 graph at {self.graph_dir / 'g2.gexf'}.", report_path=report_path, report_text=self.read_report(report_path))
+            return GraphComputeResult(level=level, command=command, return_code=1, stdout="", stderr=f"G3 requires an existing G2 graph at {self.graph_dir / 'g2.gexf'}.")
         completed = subprocess.run(command, cwd=self.project_root, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        return GraphComputeResult(level=level, command=command, return_code=completed.returncode, stdout=completed.stdout.strip(), stderr=completed.stderr.strip(), report_path=report_path, report_text=self.read_report(report_path))
+        return GraphComputeResult(level=level, command=command, return_code=completed.returncode, stdout=completed.stdout.strip(), stderr=completed.stderr.strip())
 
     def command_for(self, level: str) -> list[str]:
         level = level.upper()
@@ -55,12 +47,3 @@ class GraphComputeService:
         if level == "G3":
             return [sys.executable, "main.py", "graph-g3", "--g2", str(self.graph_dir / "g2.gexf"), "--output-dir", str(self.graph_dir)]
         raise ValueError(f"Unsupported graph level: {level}")
-
-    def report_path_for(self, level: str) -> Path:
-        return self.REPORT_PATHS[level.upper()]
-
-    @staticmethod
-    def read_report(path: Path | None) -> str:
-        if path is None or not path.exists():
-            return ""
-        return path.read_text(encoding="utf-8", errors="replace")

@@ -4,7 +4,6 @@ import pandas as pd
 import streamlit as st
 from dashboard.components.graph_compute_panel import render_graph_compute_panel
 from dashboard.components.g0_viewer import render_graph
-from dashboard.components.graph_png_export_panel import render_graph_png_export_button
 from dashboard.components.graph_tables import render_graph_summary, render_graph_tables
 from dashboard.services.g0_view_service import G0Entity, G0ViewError
 from dashboard.services.g3_annotation_service import G3AnnotationService, G3NodeAnnotation
@@ -63,7 +62,6 @@ def render_g1_page() -> None:
     if result.edge_count == 0:
         st.info("The selected view contains nodes but no edges. Try increasing the causal radius or changing direction.")
 
-    render_graph_png_export_button(result.graph,level=level,name_hint=result.entity.key if result.entity else "view")
     render_graph(result.graph, central_entity_key=result.entity.key if result.entity else None)
     with st.expander("Inspect view data", expanded=False):
         render_graph_tables(service=service, graph=result.graph)
@@ -83,7 +81,6 @@ def render_full_level_page(level: str, *, title: str) -> None:
         st.warning("This graph is large. PyVis may take some time to stabilize.")
     if level.upper() == "G3":
         render_g3_annotation_editor(result.graph)
-    render_graph_png_export_button(result.graph,level=level,name_hint="full")
     render_graph(result.graph, height=820)
     with st.expander("Inspect graph data", expanded=False):
         render_graph_tables(service=service, graph=result.graph, metadata_label="Graph metadata")

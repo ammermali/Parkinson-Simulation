@@ -27,13 +27,11 @@ def render_graph_compute_panel(level: str,*,cache_clear_callbacks: list[object] 
     else:
         st.error(f"{level} graph computation failed.")
 
-    with st.expander(f"{level} compute report", expanded=True):
-        if result.report_text:
-            st.markdown(result.report_text)
-        elif result.stdout:
+    with st.expander(f"{level} compute output", expanded=True):
+        if result.stdout:
             st.code(result.stdout, language="text", wrap_lines=True)
         else:
-            st.info("No report was produced.")
+            st.info("No output was produced.")
         if result.stderr:
             st.code(result.stderr, language="text", wrap_lines=True)
     return result

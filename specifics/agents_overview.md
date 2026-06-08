@@ -9,9 +9,9 @@ see -> next -> action -> do
 ```
 
 - `see` builds the perception of the agent.
-- `next` updates the internal state. 
-- `action` selects the action. 
-- `do` apply the action to the environment. 
+- `next` updates the internal state.
+- `action` selects the action.
+- `do` applies the action to the environment.
 
 The common contract is defined in `AdaptiveAgent`(`src/simulation/agents/structure/adaptiveagent.py`).
 
@@ -40,8 +40,8 @@ Its logic is documented in `AlphaAggregate`.
 | `MICROGLIA`     | 1 | Extracellular                   |
 | `ASTROCYTE`     | 2 | Extracellular                   |
 | `ALPHA`         | 3 | Extracellular and intracellular |
-| `MITOCHONDRION` | 4 | intracellular                   |
-| `LYSOSOME`      | 5 | intracellular                   |
+| `MITOCHONDRION` | 4 | Intracellular                   |
+| `LYSOSOME`      | 5 | Intracellular                   |
 
 ## Simulation levels
 
@@ -50,7 +50,7 @@ The simulation works on two spatial levels:
 - Extracellular level: `SubstantiaNigra` contains neurons, microglia, astrocytes and extracellular alpha-synuclein.
 - Intracellular level: every `Neuron` contains a `LocalGrid` where mitochondria, lysosomes, intracellular alpha-synuclein and aggregates live.
 
-The neuron is both an agent in the external environment and an habitat for internal agents. It's the bridge between the two levels.
+The neuron is both an agent in the external environment and a habitat for internal agents. It is the bridge between the two levels.
 
 ## Intracellular sequence
 
@@ -63,7 +63,7 @@ During `Neuron.step(...)`, if the neuron is not Ruptured:
 5. All the internal agents still active execute `action`.
 6. All the internal agents still active execute `do`.
 7. The neuron applies the effect buffer (`commit_effects`).
-8. The neuron execute it's own cycle (`see -> next -> action -> do`)
+8. The neuron executes its own cycle (`see -> next -> action -> do`)
 
 If the neuron is `Ruptured`, the internal agents get skipped and the neuron handles only the extracellular spilling and the following idling.
 

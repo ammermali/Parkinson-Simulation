@@ -3,16 +3,16 @@
 **Implementation:** `src/simulation/agents/mitochondrion.py`
 
 
-`Mitochondrion` is an intracellular agent. 
-The simulation uses `energy_demand` as a deficit in the energy demand, healthy mitochondria are responsible for overcoming this deficit.
+`Mitochondrion` is an intracellular agent.
+The simulation uses `energy_demand` as an energy deficit; healthy mitochondria are responsible for reducing this deficit.
 
-## Responsabilities
+## Responsibilities
 
 - Reduce the internal energy demand.
-- Release oxidative stress when stress or in toxic environment.
+- Release oxidative stress when stressed or in a toxic environment.
 - Produce debris in damaged situations.
-- Registers itself as a degradation target.
-- Recover through fusion or lysosomal reparation.
+- Register itself as a degradation target.
+- Recover through fusion or lysosomal repair.
 
 ## State
 
@@ -53,7 +53,7 @@ energy_pressure =
 | Current State | Transition                                             |
 |---------------|--------------------------------------------------------|
 | `Healthy`     | may become `Consumed` with `pr_pathological_evolution` |
-| `Consumed`    | may become `Healthy`, `Damaged` o `Debris`             |
+| `Consumed`    | may become `Healthy`, `Damaged` or `Debris`            |
 | `Damaged`     | may become `Consumed` or  `Debris`                     |
 | `Debris`      | stays `Debris`                                         |
 
@@ -85,5 +85,5 @@ energy_pressure =
 
 ## Interactions
 
-- With `Neuron`: uses the neurons as an habitat.
+- With `Neuron`: uses the neuron as a habitat.
 - With `Lysosome`: can be assigned as a target for the lysosome.

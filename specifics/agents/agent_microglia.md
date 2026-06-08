@@ -2,8 +2,8 @@
 
 **Implementation:** `src/simulation/agents/microglia.py`
 
-`Microglia` is an immunitaty extracellular agent. 
-Responds to debris, inflammation and local alpha-synuclein with clearance, scan or inflammatory release.
+`Microglia` is an immune extracellular agent.
+It responds to debris, inflammation and local alpha-synuclein with clearance, scanning or inflammatory release.
 
 ## Responsibilities
 
@@ -34,7 +34,7 @@ Responds to debris, inflammation and local alpha-synuclein with clearance, scan 
 
 ## State transitions - `next()`
 
-The transitions are probabilistic and sampled for agent.
+The transitions are probabilistic and sampled per agent.
 
 | Current State | Condition                                      | Possible transition |
 |---------------|------------------------------------------------|---------------------|
@@ -42,7 +42,7 @@ The transitions are probabilistic and sampled for agent.
 | `Resting`     | inflammation or alpha pressure > 0             | `Activated`         |
 | `Clearing`    | activation pressure > 0                        | `Activated`         |
 | `Clearing`    | debris pressure == 0                           | `Resting`           |
-| `Activated`   | activation pressure == 0 e debris pressure > 0 | `Clearing`          |
+| `Activated`   | activation pressure == 0 and debris pressure > 0 | `Clearing`        |
 | `Activated`   | all the signals low                            | `Resting`           |
 
 The probabilities are derived from:
@@ -79,5 +79,5 @@ max(alpha_pressure, inflammation_pressure, 0.5 * debris_pressure)
 
 ## Interactions
 
-- With `SubstantiaNigra`: reads and modify inflammation/debris.
+- With `SubstantiaNigra`: reads and modifies inflammation/debris.
 - With `Astrocyte`: both handle inflammatory response.

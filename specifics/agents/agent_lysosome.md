@@ -1,19 +1,19 @@
 # Agent: Lysosome
 
-**Implementazione:** `src/simulation/agents/lysosome.py`
+**Implementation:** `src/simulation/agents/lysosome.py`
 
-`Lysosome` is an intracellular agent responsible for degradation and reparation.
-It doesn't directly know its targets: misfolded proteins, aggregates and damaged mitochondria register themself to a buffer inside the neuron;
-the lysosome then selects an available target and degrade it over time.
+`Lysosome` is an intracellular agent responsible for degradation and repair.
+It does not directly know its targets: misfolded proteins, aggregates and damaged mitochondria register themselves in a buffer inside the neuron;
+the lysosome then selects an available target and degrades it over time.
 
 ## Responsibilities
 
 - Scan the intracellular grid when inactive.
 - Activate in presence of target/aggregate pressure.
-- Gets assigned to a degradable target by the owner neuron.
+- Get assigned to a degradable target by the owner neuron.
 - Degrade alpha proteins and aggregates.
 - Repair damaged mitochondria.
-- Becomes `Overwhelmed` if the target is too pathological.
+- Become `Overwhelmed` if the target is too pathological.
 
 ## State
 
@@ -44,7 +44,7 @@ pr_inactive_to_active =
   - target_pressure * local_aggregate_density
 ```
 
-Da `Active`:
+From `Active`:
 ```text
 pr_active_to_inactive =
   (1 - task_pressure)
@@ -67,7 +67,7 @@ The agent becomes `Overwhelmed` if it meets a non-degradable target.
 
 ## Multi-tick degradation
 
-Every target requires a number of tick before complete degradation:
+Every target requires a number of ticks before complete degradation:
 
 | Target           | Time                                                                                     |
 |------------------|------------------------------------------------------------------------------------------|
@@ -76,10 +76,10 @@ Every target requires a number of tick before complete degradation:
 | `AlphaAggregate` | `aggregate_degradation_ticks_base + aggregate_degradation_ticks_per_member * (size - 1)` |
 | other target     | 1                                                                                        |
 
-After the completing the task, the lysosome samples three possible, mutuably exclusive, outcomes:
+After completing the task, the lysosome samples three possible, mutually exclusive outcomes:
 1. overwhelm;
 2. success;
-3. failing (the target gets re-queued).
+3. failure (the target gets re-queued).
 
 For the aggregates:
 
@@ -99,13 +99,13 @@ For the Lewy bodies, `pr_overwhelm = 1.0`.
 
 | Target                            | Success                                            |
 |-----------------------------------|----------------------------------------------------|
-| `AlphaAggregate`                  | removes the aggregate and mark is as `Cleared`     |
+| `AlphaAggregate`                  | removes the aggregate and marks it as `Cleared`    |
 | free `AlphaSynuclein`             | `mark_cleared` and removal from buffer             |
 | `AlphaSynuclein` aggregate member | update of the aggregate registry                   |
 | `Mitochondrion`                   | call `repair_by_lysosome` and leave it on the grid |
 | other agent                       | removal from the grid                              |
 
-A failure cleans the assignment and re-queue the target as available.
+A failure clears the assignment and re-queues the target as available.
 
 ## Main parameters
 
@@ -121,8 +121,8 @@ A failure cleans the assignment and re-queue the target as available.
 
 ## Interactions
 
-- With `Neuron`: reads and modify `degradation_targets` and
+- With `Neuron`: reads and modifies `degradation_targets` and
   `degradation_assignment` buffers.
-- With `AlphaSynuclein`: degrade misfolded proteins.
-- With `AlphaAggregate`: degrade aggregate, but risks overwhelming.
+- With `AlphaSynuclein`: degrades misfolded proteins.
+- With `AlphaAggregate`: degrades aggregates, but risks becoming overwhelmed.
 - With `Mitochondrion`: repairs damaged mitochondria instead of removing them.

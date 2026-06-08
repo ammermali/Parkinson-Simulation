@@ -1,6 +1,6 @@
 # Parkinson MAS Parameter Guide
 
-This document explains the effect of every parameter currently defined in `src/simulation/params`.
+This document explains the effect of every parameter currently defined in `src/configuration/param`.
 
 ## Threshold Schema
 
@@ -18,27 +18,27 @@ threshold_name:
 
 Global runtime, population, world and logging parameters.
 
-| Parameter | Current | Effect                                                                                                                     |
-|---|---:|----------------------------------------------------------------------------------------------------------------------------|
-| `stop.at` | `500` | Number of scheduled ticks. Larger values expose slower or late-stage pathology.                                            |
-| `random.seed` | `42` | Global reproducibility seed for positions, sampled thresholds and stochastic events.                                       |
-| `external.population.neurons` | `20` | Global neuron count. MPI ranks partition this population, so the value describes the whole simulated system.               |
-| `external.population.microglia` | `15` | Global microglia count. More microglia increase debris clearance and eventual inflammatory release.                        |
-| `external.population.astrocytes` | `15` | Global astrocyte count. More astrocytes increase supportive anti-inflammatory capacity and possible reactive inflammation. |
-| `external.population.alpha` | `0` | Initial extracellular alpha-synuclein count. Values above zero seed extracellular pathology at startup.                    |
-| `world.height` | `10` | Extracellular grid height.                                                                                                 |
-| `world.width` | `10` | Extracellular grid width.                                                                                                  |
-| `world.buffer_size` | `2` | Repast/MPI ghost-cell buffer.                                                                                              |
-| `logging.enabled` | `true` | Default logging switch used when a sub-logger does not override it.                                                        |
-| `logging.run_id` | `default_run` | Identifier written into output logs.                                                                                       |
-| `logging.output_dir` | `output/simulation/logs` | Directory for runtime and initialization logs.                                                                             |
-| `logging.causal.enabled` | `true` | Enables G0 causal nodes and edges. Useful for mechanism analysis.                                                          |
-| `logging.initialization.enabled` | `true` | Writes initial agent conditions and baseline alpha nodes.                                                                  |
-| `logging.scalar_stdout` | `true` | Prints main extracellular scalars every tick.                                                                              |
-| `logging.tick_metrics_csv` | `true` | Writes `tick_metrics.csv` with global per-tick scalars and compact state counts.                                           |
-| `logging.progress_stdout` | `true` | Prints progress and final summary from rank 0.                                                                             |
-| `logging.progress_interval` | `25` | Tick interval for progress messages.                                                                                       |
-| `logging.summary_stdout` | `true` | Prints end-of-run counts for neurons, glia, alpha and aggregates.                                                          |
+| Parameter                        |       Current | Effect                                                                                                                     |
+|----------------------------------|--------------:|----------------------------------------------------------------------------------------------------------------------------|
+| `stop.at`                        |         `500` | Number of scheduled ticks. Larger values expose slower or late-stage pathology.                                            |
+| `random.seed`                    |          `42` | Global reproducibility seed for positions, sampled thresholds and stochastic events.                                       |
+| `external.population.neurons`    |          `20` | Global neuron count. MPI ranks partition this population, so the value describes the whole simulated system.               |
+| `external.population.microglia`  |          `15` | Global microglia count. More microglia increase debris clearance and eventual inflammatory release.                        |
+| `external.population.astrocytes` |          `15` | Global astrocyte count. More astrocytes increase supportive anti-inflammatory capacity and possible reactive inflammation. |
+| `external.population.alpha`      |           `0` | Initial extracellular alpha-synuclein count. Values above zero seed extracellular pathology at startup.                    |
+| `world.height`                   |          `10` | Extracellular grid height.                                                                                                 |
+| `world.width`                    |          `10` | Extracellular grid width.                                                                                                  |
+| `world.buffer_size`              |           `2` | Repast/MPI ghost-cell buffer.                                                                                              |
+| `logging.enabled`                |        `true` | Default logging switch used when a sub-logger does not override it.                                                        |
+| `logging.run_id`                 | `default_run` | Identifier written into output logs.                                                                                       |
+| `logging.output_dir`             |      `output` | Root directory for runtime logs, rank logs, initialization logs and metrics.                                               |
+| `logging.causal.enabled`         |        `true` | Enables semantic event logging for G0 projection and mechanism analysis.                                                   |
+| `logging.initialization.enabled` |        `true` | Writes initial agent conditions and baseline alpha nodes.                                                                  |
+| `logging.scalar_stdout`          |        `true` | Prints main extracellular scalars every tick.                                                                              |
+| `logging.tick_metrics_csv`       |        `true` | Writes `tick_metrics.csv` with global per-tick scalars and compact state counts.                                           |
+| `logging.progress_stdout`        |        `true` | Prints progress and final summary from rank 0.                                                                             |
+| `logging.progress_interval`      |          `25` | Tick interval for progress messages.                                                                                       |
+| `logging.summary_stdout`         |        `true` | Prints end-of-run counts for neurons, glia, alpha and aggregates.                                                          |
 
 ## `substantia_nigra.yaml`
 

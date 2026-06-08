@@ -2,7 +2,7 @@
 
 **Implementation:** `src/simulation/agents/alphasynuclein.py`
 
-`AlphaSynuclein` represents a single free alpha protein. 
+`AlphaSynuclein` represents a single free alpha protein.
 The creation of the aggregate doesn't happen inside this agent: it's entirely handled through the `AggregateRegistry`.
 
 ## Compartments
@@ -34,7 +34,7 @@ The creation of the aggregate doesn't happen inside this agent: it's entirely ha
 | `local_aggregate_density` | density of aggregate in the current cell                  |
 | `neighbors`               | nearby agents within `perception_radius`                  |
 
-## State transaction - `next()`
+## State transitions - `next()`
 
 From `Monomer`, the protein can get to `Misfolded` with a probability of:
 
@@ -56,7 +56,7 @@ pr_oligomerization =
   * (0.3 * neighbor_alpha_density + 0.7 * neighbor_aggregate_density)
 ```
 
-If the sample is successfull, it sets `wants_oligomerization = True`. 
+If the sample is successful, it sets `wants_oligomerization = True`.
 The aggregate registry will consume this intention during the collective phase.
 
 ## Actions - `action()` and `do()`
@@ -101,7 +101,7 @@ During `do`, a misfolded free intracellular protein also gets registered as a ta
 
 ## Interaction
 
-- With `Neuron`: uses the owner neuron as an habitat and register to the degradation buffer when it's misfolded.
-- With `AggregateRegistry`: delivers the intention to oligomerize and get absorbed by aggregate members.
+- With `Neuron`: uses the owner neuron as a habitat and registers to the degradation buffer when it is misfolded.
+- With `AggregateRegistry`: delivers the intention to oligomerize and can be absorbed into aggregate members.
 - With `Lysosome`: can be degraded if misfolded and free, or as a member of an aggregate.
-- With `AlphaAggregate`: stops being an active agent when it get absorbed into an aggregate.
+- With `AlphaAggregate`: stops being an active agent when it is absorbed into an aggregate.

@@ -2,7 +2,7 @@
 
 **Implementation:** `src/simulation/agents/neuron.py`
 
-`Neuron` is the main macro-agent of the simulation. 
+`Neuron` is the main macro-agent of the simulation.
 It lives in the extracellular grid of the Substantia Nigra, but also contains an internal grid
 where mitochondria, lysosomes, alpha-synuclein proteins and aggregates interact with each other.
 
@@ -12,7 +12,7 @@ where mitochondria, lysosomes, alpha-synuclein proteins and aggregates interact 
 - Produce dopamine.
 - Absorb or release pathological alpha.
 - Expose an internal habitat.
-- Coordinates the cycle of its internal agents before its own.
+- Coordinate the cycle of its internal agents before its own.
 
 ## State
 
@@ -54,7 +54,7 @@ total_stress = 0.5 * external_stress + 0.5 * internal_damage
 ```
 
 If `total_stress <= low_stress_threshold`, `cell_damage` can recover through
-`damage_recovery_rate` to `Healthy` and `Compromised` states. Otherwise the damage increases by `damage_accumulation_rate`, limited by
+`damage_recovery_rate` in `Healthy` and `Compromised` states. Otherwise the damage increases by `damage_accumulation_rate`, limited by
 `max_damage_increment_per_tick`.
 
 | Condition                              | Candidate state |
@@ -85,7 +85,7 @@ Every neuron exposes a `LocalGrid`. The internal scalars are:
 | Scalar                 | Role                                     |
 |------------------------|------------------------------------------|
 | `oxidative_stress`     | internal toxicity                        |
-| `intracellular_debris` | debris produced by mithocondrial failure |
+| `intracellular_debris` | debris produced by mitochondrial failure |
 | `energy_demand`        | unsatisfied energy demand                |
 
 ## Degradation buffers
@@ -95,8 +95,8 @@ The neuron contains:
 - `degradation_targets`: available degradable targets;
 - `degradation_assignment`: mapping lysosome -> assigned target.
 
-Damaged mitochondria, misfolded proteins and aggregates register themself as target.
-Lysosome select an unassigned target, work on it and, according to the outcome, the neuron either clean it or re-queue it.
+Damaged mitochondria, misfolded proteins and aggregates register themselves as targets.
+Lysosomes select unassigned targets, work on them and, according to the outcome, the neuron either clears or re-queues them.
 
 ## Alpha transfer
 
@@ -105,7 +105,7 @@ Every candidate gets accepted with probability `alpha_absorption_rate`.
 
 `release_alpha(...)` transfers pathological alpha from the internal habitat to the environment:
 
-- if the neuron is `Ruptured`, release all the alpha agent;
+- if the neuron is `Ruptured`, release all alpha agents;
 - otherwise, release a quota derived from `alpha_release_amount`.
 
 ## Main parameters
@@ -126,4 +126,4 @@ Every candidate gets accepted with probability `alpha_absorption_rate`.
 - With `Mitochondrion`: receives energy demand, oxidative stress and debris reduction.
 - With `Lysosome`: provides the target assignment buffers.
 - With `AlphaSynuclein` and `AlphaAggregate`: absorbs, releases and computes the pathological load.
-- With `AggregateRegistry`: delegate identity, fusion and maturation of aggregates.
+- With `AggregateRegistry`: delegates identity, fusion and maturation of aggregates.

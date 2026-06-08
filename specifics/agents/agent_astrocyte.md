@@ -2,16 +2,16 @@
 
 **Implementation:** `src/simulation/agents/astrocyte.py`
 
-`Astrocyte` is a support extracellular agent. 
+`Astrocyte` is a supportive extracellular agent.
 In normal conditions, it reduces inflammation; if the stress is persistent, it can become Reactive and contribute to the inflammatory release.
 
-## Responsability
+## Responsibilities
 
-- Reads inflammation and extracellular debris.
+- Read inflammation and extracellular debris.
 - Integrate a stress memory over time.
-- Switches between Supportive and Reactive state in a probabilistic way.
+- Switch between `Supportive` and `Reactive` states in a probabilistic way.
 - Reduce inflammation when supportive.
-- Releases inflammation when reactive.
+- Release inflammation when reactive.
 
 ## State
 
@@ -45,7 +45,7 @@ stress_memory =
   + (1 - stress_memory_decay) * stress_pressure
 ```
 
-## State transaction - `next()`
+## State transitions - `next()`
 
 | Current state | Rule                                                                                  |
 |---------------|---------------------------------------------------------------------------------------|
@@ -86,6 +86,6 @@ release =
 
 ## Interactions
 
-- With `SubstantiaNigra`: reads debris/inflammation and edit inflammation.
+- With `SubstantiaNigra`: reads debris/inflammation and edits inflammation.
 - With `Microglia`: either balance or amplify the microglia inflammation.
 - With `Neuron`: reducing the inflammation may limit neuronal damage.

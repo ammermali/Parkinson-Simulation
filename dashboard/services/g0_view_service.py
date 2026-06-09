@@ -8,7 +8,7 @@ import networkx as nx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_G0_FULL_PATH = PROJECT_ROOT / "output" / "graphs" / "g0.gexf"
-DEFAULT_G0_LITE_PATH = PROJECT_ROOT / "output" / "graphs" / "g0.lite.gext"
+DEFAULT_G0_LITE_PATH = PROJECT_ROOT / "output" / "graphs" / "g0.lite.gexf"
 DEFAULT_G0_PATH = DEFAULT_G0_LITE_PATH
 Direction = Literal["incoming", "outgoing", "both"]
 
@@ -87,9 +87,7 @@ class G0ViewService:
         try:
             loaded = nx.read_gexf(self.graph_path, node_type=str)
         except Exception as exc:
-            if not self._is_empty_numeric_gexf_error(exc):
-                raise G0ViewError(f"Unable to read G0 from `{self.graph_path}`: {exc}") from exc
-            loaded = self._load_graph_without_empty_attvalues(exc)
+            raise G0ViewError(f"Unable to read G0 from `{self.graph_path}`: {exc}") from exc
         graph = loaded if isinstance(loaded, nx.DiGraph) else nx.DiGraph(loaded)
         self._normalize_graph_attributes(graph)
         return graph

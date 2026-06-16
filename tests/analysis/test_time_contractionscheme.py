@@ -1,6 +1,7 @@
 import pytest
 
 nx = pytest.importorskip("networkx")
+pytest.importorskip("multilevelgraphs")
 
 from src.analysis.schemes.agent_clustering_scheme import AgentClusteringScheme
 from src.analysis.schemes.time_contractionscheme import TimeContractionScheme
@@ -38,6 +39,22 @@ def field_node(field, tick):
         "tick": tick,
         "entity_key": f"SN:{field}",
     }
+
+
+class TestContractionSchemeInstantiation:
+    def test_all_project_schemes_satisfy_multilevelgraphs_abstract_contract(self):
+        schemes = [TimeContractionScheme(), AgentClusteringScheme(), TopologicalSCCContractionScheme()]
+
+        assert [scheme.contraction_name() for scheme in schemes] == ["time", "agent_cluster", "topological_scc"]
+
+    def test_scheme_clones_preserve_configuration(self):
+        time_scheme = TimeContractionScheme(window_size=5)
+
+        clone = time_scheme.clone()
+
+        assert clone is not time_scheme
+        assert clone.window_size == 5
+        assert clone.contraction_name() == "time_w5"
 
 
 class TestTimeContraction:
@@ -106,8 +123,8 @@ class TestTimeContraction:
         g0.add_node("sn@1", **field_node("oxidative_stress", 1))
         g0.add_node("a1@1", **agent_node("1:3:0", "Misfolded", 1))
         g0.add_node("a1@2", **agent_node("1:3:0", "Misfolded", 2))
-        g0.add_edge("sn@1", "a1@1", relation="threshold_trigger", causal_kind="perception", tick=1, effect_value=0.2)
-        g0.add_edge("sn@1", "a1@2", relation="threshold_trigger", causal_kind="perception", tick=2, effect_value=0.4)
+        g0.add_edge("sn@1", "a1@1", relation="threshold_trigger", causal_kind="threshold_trigger", tick=1, effect_value=0.2)
+        g0.add_edge("sn@1", "a1@2", relation="threshold_trigger", causal_kind="threshold_trigger", tick=2, effect_value=0.4)
 
         g1 = TimeContractionScheme().contract(g0)
 
@@ -177,9 +194,9 @@ class TestTopologicalSCCContractionScheme:
         g2.add_node("SN_inflammation_level", semantic_kind="environment_field", agent_type="SubstantiaNigra", uid="SN", field="inflammation_level")
         g2.add_node("Microglia_Activated", semantic_kind="agent_state", agent_type="Microglia", state="Activated")
         g2.add_node("Neuron_Compromised", semantic_kind="agent_state", agent_type="Neuron", state="Compromised")
-        g2.add_edge("SN_inflammation_level", "Microglia_Activated", relation="threshold_trigger", causal_kind="perception", count=4, total_effect=0.8, mean_effect=0.2)
-        g2.add_edge("Microglia_Activated", "SN_inflammation_level", relation="field_effect", causal_kind="action", count=3, total_effect=0.6, mean_effect=0.2)
-        g2.add_edge("SN_inflammation_level", "Neuron_Compromised", relation="threshold_trigger", causal_kind="perception", count=2, total_effect=0.3, mean_effect=0.15)
+        g2.add_edge("SN_inflammation_level", "Microglia_Activated", relation="threshold_trigger", causal_kind="threshold_trigger", count=4, total_effect=0.8, mean_effect=0.2)
+        g2.add_edge("Microglia_Activated", "SN_inflammation_level", relation="field_effect", causal_kind="field_effect", count=3, total_effect=0.6, mean_effect=0.2)
+        g2.add_edge("SN_inflammation_level", "Neuron_Compromised", relation="threshold_trigger", causal_kind="threshold_trigger", count=2, total_effect=0.3, mean_effect=0.15)
 
         g3 = TopologicalSCCContractionScheme().contract(g2)
         feedback_nodes = [

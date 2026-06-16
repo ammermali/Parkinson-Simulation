@@ -525,6 +525,8 @@ class TestParkinsonModel:
         model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
 
         startup = capsys.readouterr().out
+        assert "[progress] initializing run" in startup
+        assert "[progress] logging:" in startup
         assert "[progress] starting run" in startup
         model.step()
         assert capsys.readouterr().out == ""
@@ -532,6 +534,48 @@ class TestParkinsonModel:
 
         progress = capsys.readouterr().out
         assert "[progress] tick 2/3" in progress
+
+    def test_scalar_stdout_reports_tick_number(self, engine_module, capsys):
+        params = {
+            "stop.at": 3,
+            "random.seed": 21,
+            "world": {"width": 4, "height": 4, "buffer_size": 1},
+            "external.population": {"neurons": 0, "microglia": 0, "astrocytes": 0, "alpha": 0},
+            "logging": {
+                "enabled": False,
+                "scalar_stdout": True,
+                "progress_stdout": False,
+            }}
+        model = engine_module.ParkinsonModel(engine_module.MPI.COMM_WORLD, params)
+
+        capsys.readouterr()
+        model.step()
+
+        output = capsys.readouterr().out
+        assert "[tick] 1 | debris=" in output
+        assert "inflammation=" in output
+        assert "dopamine=" in output
+
+    def test_record_tick_emits_console_before_file_loggers(self, engine_module):
+        reporter = object.__new__(engine_module.RuntimeReporter)
+        calls = []
+        reporter.log_stage_start = lambda *args, **kwargs: None
+        reporter.log_stage_end = lambda *args, **kwargs: None
+        reporter.record_scalar_tick = lambda: calls.append("scalar")
+        reporter.log_tick = lambda: calls.append("tick_stdout")
+        reporter._log_progress_tick = lambda: calls.append("progress_stdout")
+        reporter.record_tick_metrics_csv = lambda: calls.append("tick_metrics_csv")
+        reporter.record_spatial_tick = lambda: calls.append("spatial_logger")
+
+        reporter.record_tick()
+
+        assert calls == [
+            "scalar",
+            "tick_stdout",
+            "progress_stdout",
+            "tick_metrics_csv",
+            "spatial_logger",
+        ]
 
     def test_step_finalizes_and_stops_at_configured_tick(self, engine_module, capsys):
         params = {
@@ -864,7 +908,6 @@ class TestParkinsonModel:
 
         events = (tmp_path / "run_logs" / "events.jsonl").read_text(encoding="utf-8").splitlines()
         snapshots = (tmp_path / "run_logs" / "spatial_snapshots.jsonl").read_text(encoding="utf-8").splitlines()
-        assert any('"event_type": "action_selected"' in row for row in events)
         assert any('"event_type": "field_change"' in row for row in events)
         assert any('"agent_class": "Astrocyte"' in row for row in snapshots)
         assert not (tmp_path / "run_logs" / "g0_nodes.jsonl").exists()

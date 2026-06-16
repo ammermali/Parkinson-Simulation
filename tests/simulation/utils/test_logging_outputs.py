@@ -7,22 +7,18 @@ from src.simulation.logger.snapshot_logger import SnapshotLogger
 
 
 class TestEventLogger:
-    def test_writes_semantic_events_without_legacy_g0_files(self, tmp_path):
+    def test_writes_semantic_events_without_inline_g0_files(self, tmp_path):
         logger = EventLogger(run_id="test_run", rank=0, output_dir=tmp_path, enabled=True)
         logger.set_tick(7)
         agent = SimpleNamespace(uid=(3, 1, 0), state="Supportive")
-        target = SimpleNamespace(uid=(4, 2, 0), state="Misfolded")
-        logger.action_selection(agent, "support", "astrocyte_state_action_policy")
         logger.field_effect(agent, "support", "inflammation_level", -0.05, "astrocyte_support")
-        logger.target_assignment(agent, target, "legacy_target_assignment")
-        logger.buffer_commit("inflammation_removed", "inflammation_level", -0.05, "legacy_commit")
         logger.close()
         events = [
             json.loads(line)
             for line in (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
         ]
-        assert [event["event_type"] for event in events] == ["action_selected", "field_change"]
-        assert events[1]["effects"][0]["field"] == "inflammation_level"
+        assert [event["event_type"] for event in events] == ["field_change"]
+        assert events[0]["effects"][0]["field"] == "inflammation_level"
         assert not (tmp_path / "g0_nodes.jsonl").exists()
         assert not (tmp_path / "g0_edges.jsonl").exists()
 

@@ -7,199 +7,122 @@ def write_jsonl(path, rows):
     path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
 
 
-def edge(tick, mechanism, relation, **overrides):
+def event(tick, mechanism, event_type, **overrides):
     row = {
+        "schema_version": "1.0",
+        "run_id": "test-run",
+        "event_id": f"{tick}:{mechanism}:{event_type}",
         "tick": tick,
+        "phase": "2_state_update",
+        "rank": 0,
+        "event_type": event_type,
         "mechanism": mechanism,
-        "relation": relation,
-        "source_type": "unknown",
-        "source_state": None,
-        "source_uid": None,
-        "target_type": "unknown",
-        "target_state": None,
-        "target_uid": None,
-        "owner_uid": None,
-        "outcome": None,
-        "probability": None,
-        "rng_value": None
+        "actor": {},
+        "target": {},
+        "effects": [],
+        "stochastic": {},
+        "context": {},
     }
     row.update(overrides)
     return row
 
 
-def node(tick, **overrides):
-    row = {
-        "tick": tick,
-        "kind": "agent_state",
-        "agent_type": "AlphaSynuclein",
-        "state": "Monomer"
-    }
+def agent(uid, agent_type, state=None, **overrides):
+    row = {"uid": uid, "type": agent_type}
+    if state is not None:
+        row["state"] = state
     row.update(overrides)
     return row
+
+
+def transition(tick, mechanism, uid, agent_type, before, after, **overrides):
+    return event(
+        tick,
+        mechanism,
+        "state_transition",
+        actor=agent(uid, agent_type, state_before=before, state_after=after, **overrides.pop("actor_overrides", {})),
+        **overrides,
+    )
 
 
 class TestMechanismMetrics:
-    def test_counts_core_alpha_and_lysosome_mechanisms_without_double_counting_target_claims(self, tmp_path):
+    def test_counts_core_alpha_and_lysosome_mechanisms_from_events(self, tmp_path):
         write_jsonl(
-            tmp_path / "g0_nodes.jsonl",
+            tmp_path / "events.jsonl",
             [
-                node(0, state="Monomer"),
-                node(0, state="Monomer"),
-                node(0, state="Misfolded"),
-                node(
-                    2,
-                    kind="aggregate",
-                    agent_type="AlphaAggregate",
-                    state="Oligomer",
-                    uid="agg1",
-                    value=2,
-                ),
-                node(
-                    3,
-                    kind="aggregate",
-                    agent_type="AlphaAggregate",
-                    state="LewyBody",
-                    uid="agg1",
-                    value=3,
-                ),
-                node(1, state="Monomer")
-            ]
-        )
-        write_jsonl(
-            tmp_path / "g0_edges.jsonl",
-            [
-                edge(
+                transition(0, "initial_alpha_state", "a0", "AlphaSynuclein", None, "Monomer"),
+                transition(0, "initial_alpha_state", "a1", "AlphaSynuclein", None, "Monomer"),
+                transition(0, "initial_alpha_state", "a2", "AlphaSynuclein", None, "Misfolded"),
+                transition(
                     1,
                     "alpha_misfolding",
-                    "state_transition",
-                    source_type="AlphaSynuclein",
-                    source_state="Monomer",
-                    target_type="AlphaSynuclein",
-                    target_state="Misfolded",
-                    target_uid="a1",
-                    owner_uid="n1",
+                    "a1",
+                    "AlphaSynuclein",
+                    "Monomer",
+                    "Misfolded",
                     outcome="transitioned",
-                    probability=0.2,
-                    rng_value=0.1
+                    stochastic={"probability": 0.2, "rng_value": 0.1},
                 ),
-                edge(
+                event(
                     2,
                     "alpha_added_to_aggregate",
                     "aggregation",
-                    source_type="AlphaSynuclein",
-                    target_type="AlphaAggregate",
-                    target_state="Oligomer",
-                    target_uid="agg1",
-                    owner_uid="n1",
-                    outcome="member_added"
+                    actor=agent("a1", "AlphaSynuclein", "Misfolded", owner_uid="n1"),
+                    target=agent("agg1", "AlphaAggregate", "Oligomer", size=2),
+                    outcome="member_added",
                 ),
-                edge(
+                event(
                     2,
                     "alpha_added_to_aggregate",
                     "aggregation",
-                    source_type="AlphaSynuclein",
-                    target_type="AlphaAggregate",
-                    target_state="Oligomer",
-                    target_uid="agg1",
-                    owner_uid="n1",
-                    outcome="member_added"
+                    actor=agent("a2", "AlphaSynuclein", "Misfolded", owner_uid="n1"),
+                    target=agent("agg1", "AlphaAggregate", "Oligomer", size=2),
+                    outcome="member_added",
                 ),
-                edge(
+                transition(
                     3,
                     "aggregate_matures_to_lewy_body",
-                    "state_transition",
-                    source_type="AlphaAggregate",
-                    source_state="Oligomer",
-                    target_type="AlphaAggregate",
-                    target_state="LewyBody",
-                    target_uid="agg1",
-                    owner_uid="n1",
-                    outcome="transitioned"
+                    "agg1",
+                    "AlphaAggregate",
+                    "Oligomer",
+                    "LewyBody",
+                    outcome="transitioned",
+                    actor_overrides={"size": 3},
                 ),
-                edge(
-                    4,
-                    "neuron_registers_degradation_target",
-                    "target_assignment",
-                    source_type="Neuron",
-                    target_type="AlphaSynuclein",
-                    target_state="Misfolded",
-                    target_uid="a1",
-                    owner_uid="n1",
-                    outcome="registered"
-                ),
-                edge(
-                    5,
-                    "neuron_assigns_degradation_target",
-                    "target_assignment",
-                    source_type="Lysosome",
-                    target_type="AlphaSynuclein",
-                    target_state="Misfolded",
-                    target_uid="a1",
-                    owner_uid="n1",
-                    outcome="assigned"
-                ),
-                edge(
-                    5,
-                    "lysosome_selects_degradation_target",
-                    "target_assignment",
-                    source_type="Lysosome",
-                    target_type="AlphaSynuclein",
-                    target_state="Misfolded",
-                    target_uid="a1",
-                    owner_uid="n1",
-                    outcome="assigned"
-                ),
-                edge(
+                event(
                     6,
                     "lysosome_degradation_success",
                     "degradation",
-                    source_type="Lysosome",
-                    source_state="degrade",
-                    target_type="AlphaSynuclein",
-                    target_state="Cleared",
-                    target_uid="a1",
-                    owner_uid="n1",
+                    actor=agent("l1", "Lysosome", "degrade"),
+                    target=agent("a1", "AlphaSynuclein", "Cleared"),
                     outcome="protein_cleared",
-                    probability=0.6,
-                    rng_value=0.4
+                    stochastic={"probability": 0.6, "rng_value": 0.4},
                 ),
-                edge(
+                event(
                     7,
                     "lysosome_degradation_failure",
                     "degradation",
-                    source_type="Lysosome",
-                    source_state="degrade",
-                    target_type="AlphaAggregate",
-                    target_state="Oligomer",
-                    target_uid="agg2",
-                    owner_uid="n1",
+                    actor=agent("l1", "Lysosome", "degrade"),
+                    target=agent("agg2", "AlphaAggregate", "Oligomer"),
                     outcome="failed_requeued",
-                    probability=0.3,
-                    rng_value=0.9,
+                    stochastic={"probability": 0.3, "rng_value": 0.9},
                 ),
-                edge(
+                event(
                     8,
                     "lysosome_overwhelmed_by_target",
                     "degradation",
-                    source_type="Lysosome",
-                    source_state="degrade",
-                    target_type="AlphaAggregate",
-                    target_state="LewyBody",
-                    target_uid="agg3",
-                    owner_uid="n1",
-                    outcome="overwhelmed"
+                    actor=agent("l1", "Lysosome", "degrade"),
+                    target=agent("agg3", "AlphaAggregate", "LewyBody"),
+                    outcome="overwhelmed",
                 ),
-                edge(
+                transition(
                     8,
                     "lysosome_overwhelmed_by_target",
-                    "state_transition",
-                    source_type="Lysosome",
-                    source_state="Active",
-                    target_type="Lysosome",
-                    target_state="Overwhelmed",
-                    target_uid="l1",
-                    owner_uid="n1",
-                    outcome="transitioned"
+                    "l1",
+                    "Lysosome",
+                    "Active",
+                    "Overwhelmed",
+                    outcome="transitioned",
                 ),
             ],
         )
@@ -214,8 +137,8 @@ class TestMechanismMetrics:
             "cleared": 0,
             "lewy_body_members": 0,
         }
-        assert alpha["aggregate_nodes"]["unique_aggregates_observed"] == 1
-        assert alpha["aggregate_nodes"]["unique_lewy_body_aggregates_observed"] == 1
+        assert alpha["aggregate_nodes"]["unique_aggregates_observed"] == 3
+        assert alpha["aggregate_nodes"]["unique_lewy_body_aggregates_observed"] == 2
         assert alpha["aggregate_nodes"]["lewy_body_size_summary"]["max"] == 3
         assert alpha["misfolding_events"] == 1
         assert alpha["aggregate_member_additions"] == 2
@@ -223,81 +146,83 @@ class TestMechanismMetrics:
         assert alpha["aggregate_targets_touched"] == 1
         assert alpha["lewy_body_maturations"] == 1
         lysosome = report["selected_mechanisms"]["lysosome"]
-        assert lysosome["targets_registered"]["total"] == 1
-        assert lysosome["successful_target_claims"]["total"] == 1
         assert lysosome["degradation_attempts"]["total"] == 3
         assert lysosome["degradation_attempts"]["success"] == 1
         assert lysosome["degradation_attempts"]["failure"] == 1
         assert lysosome["degradation_attempts"]["overwhelmed"] == 1
         assert lysosome["degradation_attempts"]["overwhelmed_by_lewy_body"] == 1
         assert lysosome["degradation_attempts"]["success_rate"] == 1 / 3
-        assert report["by_tick"]["5"]["neuron_assigns_degradation_target"] == 1
-        assert report["by_tick"]["5"]["lysosome_selects_degradation_target"] == 1
 
-    def test_falls_back_to_rank_local_edges_when_merged_log_is_missing(self, tmp_path):
+    def test_reads_rank_local_events_when_merged_log_is_missing(self, tmp_path):
         write_jsonl(
-            tmp_path / "g0_edges_rank1.jsonl",
+            tmp_path / "events_rank1.jsonl",
             [
-                edge(
+                event(
                     2,
                     "microglia_debris_clearance",
-                    "field_effect",
-                    source_type="Microglia",
-                    target_type="SubstantiaNigra",
-                    outcome="buffered"
+                    "field_change",
+                    actor=agent("m1", "Microglia"),
+                    target=agent("SN", "SubstantiaNigra"),
+                    effects=[{"field": "debris", "scope": "environment", "delta": -1}],
+                    outcome="buffered",
                 )
-            ]
+            ],
         )
         write_jsonl(
-            tmp_path / "g0_edges_rank0.jsonl",
+            tmp_path / "events_rank0.jsonl",
             [
-                edge(
+                event(
                     1,
                     "astrocyte_reactive_inflammation_release",
-                    "field_effect",
-                    source_type="Astrocyte",
-                    target_type="SubstantiaNigra",
-                    outcome="buffered"
+                    "field_change",
+                    actor=agent("a1", "Astrocyte"),
+                    target=agent("SN", "SubstantiaNigra"),
+                    effects=[{"field": "inflammation", "scope": "environment", "delta": 1}],
+                    outcome="buffered",
                 )
-            ]
+            ],
         )
+
         report = summarize_mechanisms(tmp_path, include_by_tick=False)
+
         glia = report["selected_mechanisms"]["glia"]
         assert glia["microglia_debris_clearance"] == 1
         assert glia["astrocyte_reactive_inflammation_release"] == 1
-        assert [path.rsplit("\\", 1)[-1] for path in report["input_edge_files"]] == [
-            str(tmp_path / "g0_edges_rank0.jsonl").rsplit("\\", 1)[-1],
-            str(tmp_path / "g0_edges_rank1.jsonl").rsplit("\\", 1)[-1]
+        assert [path.rsplit("\\", 1)[-1] for path in report["input_event_files"]] == [
+            str(tmp_path / "events_rank0.jsonl").rsplit("\\", 1)[-1],
+            str(tmp_path / "events_rank1.jsonl").rsplit("\\", 1)[-1],
         ]
         assert "by_tick" not in report
 
     def test_probability_summary_is_grouped_by_mechanism(self, tmp_path):
         write_jsonl(
-            tmp_path / "g0_edges.jsonl",
+            tmp_path / "events.jsonl",
             [
-                edge(
+                transition(
                     1,
                     "alpha_misfolding",
-                    "state_transition",
-                    source_type="AlphaSynuclein",
-                    target_type="AlphaSynuclein",
+                    "a1",
+                    "AlphaSynuclein",
+                    "Monomer",
+                    "Misfolded",
                     outcome="transitioned",
-                    probability=0.2,
-                    rng_value=0.1
+                    stochastic={"probability": 0.2, "rng_value": 0.1},
                 ),
-                edge(
+                transition(
                     2,
                     "alpha_misfolding",
-                    "state_transition",
-                    source_type="AlphaSynuclein",
-                    target_type="AlphaSynuclein",
+                    "a2",
+                    "AlphaSynuclein",
+                    "Monomer",
+                    "Misfolded",
                     outcome="transitioned",
-                    probability=0.6,
-                    rng_value=0.3
-                )
-            ]
+                    stochastic={"probability": 0.6, "rng_value": 0.3},
+                ),
+            ],
         )
+
         report = summarize_mechanisms(tmp_path, include_by_tick=False)
+
         probability = report["all_mechanisms"]["probability_summary"]["alpha_misfolding"]
         rng = report["all_mechanisms"]["rng_summary"]["alpha_misfolding"]
         assert probability["count"] == 2

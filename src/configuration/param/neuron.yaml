@@ -1,6 +1,5 @@
 perception:
   per_radius: 1
-
 thresholds:
   nearby_alpha_high_threshold:
     mean: 0.58
@@ -12,7 +11,7 @@ thresholds:
     mean: 0.6
     std: 0.05
   alpha_load_release_threshold:
-    mean: 0.10
+    mean: 0.1
     std: 0.02
   low_stress_threshold:
     mean: 0.12
@@ -20,7 +19,6 @@ thresholds:
   compromised_threshold: 0.28
   apoptotic_threshold: 0.78
   ruptured_threshold: 0.985
-
 damage:
   damage_accumulation_rate: 0.22
   damage_recovery_rate: 0.022
@@ -29,11 +27,10 @@ damage:
   min_ticks_apoptotic_before_ruptured: 20
   apoptotic_internal_damage_threshold: 0.35
   rupture_internal_damage_threshold: 0.45
-  rupture_intracellular_debris_threshold: 0.10
+  rupture_intracellular_debris_threshold: 0.1
   inflammation_damage_weight: 0.35
   debris_damage_weight: 0.3
   alpha_damage_weight: 0.31
-
 rates:
   dopamine_release_rate: 0.18
   dopamine_factor_healthy: 1.0
@@ -42,12 +39,10 @@ rates:
   dopamine_factor_ruptured: 0.0
   stress_inflammation_release_rate: 0.04
   debris_release_rate: 0.1
-
 alpha:
   alpha_absorption_rate: 0.08
   alpha_release_amount: 0.04
   alpha_release_dopamine_fraction: 0.35
-
 intracellular:
   grid:
     height: 5

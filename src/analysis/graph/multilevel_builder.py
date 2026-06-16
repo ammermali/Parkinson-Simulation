@@ -48,7 +48,7 @@ def build_multilevel_graphs(log_dir: Path | str = DEFAULT_LOG_DIR, *, output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
         if write_g0:
             output_paths.update(write_level_exports("g0", g0, output_dir=output_dir))
-            output_paths["g0_lite_gephi"] = write_g0_lite_gexf(g0, output_dir / "g0.lite.gext")
+            output_paths["g0_lite_gephi"] = write_g0_lite_gexf(g0, output_dir / "g0.lite.gexf")
         for level in ("g1", "g2", "g3"):
             output_paths.update(write_level_exports(level, graphs_by_level[level], output_dir=output_dir))
     return MultilevelBuildResult(g0=g0, g1=g1, g2=g2, g3=g3, multilevel_graph=ml_graph, output_paths=output_paths)

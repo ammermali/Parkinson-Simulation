@@ -2,14 +2,11 @@ initial:
   debris: 0.1
   inflammation: 0.08
   dopamine: 0.8
-
 decay:
-  debris: 0.03
+  debris: 0.04
   inflammation: 0.08
-
 dopamine:
   smoothing: 0.35
-
 effects:
   baseline_debris_input: 0.003
   debris_added_max_delta: 0.12

@@ -104,8 +104,8 @@ def read_path(data: dict[str, Any], key: str) -> Any:
 
     if key in data:
         return data[key]
-    current: Any = data
-    for part in split_key(key):
+    current, parts = resolve_parent(data, key)
+    for part in parts:
         if not isinstance(current, dict) or part not in current:
             raise KeyError(f"Missing parameter key: {key}")
         current = current[part]
@@ -118,14 +118,13 @@ def write_path(data: dict[str, Any], key: str, value: Any, *, create: bool) -> N
     if key in data:
         data[key] = value
         return
-    parts = split_key(key)
-    current: Any = data
+    current, parts = resolve_parent(data, key)
     for part in parts[:-1]:
         if not isinstance(current, dict):
             raise TypeError(f"Cannot descend into non-mapping segment: {part}")
         if part not in current:
             if not create:
-                raise KeyError(f"Missing parameter key: {'.'.join(parts)}")
+                raise KeyError(f"Missing parameter key: {key}")
             current[part] = {}
         current = current[part]
     if not isinstance(current, dict):
@@ -133,6 +132,17 @@ def write_path(data: dict[str, Any], key: str, value: Any, *, create: bool) -> N
     if parts[-1] not in current and not create:
         raise KeyError(f"Missing parameter key: {key}")
     current[parts[-1]] = value
+
+
+def resolve_parent(data: dict[str, Any], key: str) -> tuple[Any, list[str]]:
+    """Resolve mixed dotted top-level keys and nested paths."""
+
+    parts = split_key(key)
+    for split_at in range(len(parts) - 1, 0, -1):
+        prefix = ".".join(parts[:split_at])
+        if prefix in data:
+            return data[prefix], parts[split_at:]
+    return data, parts
 
 
 def split_key(key: str) -> list[str]:

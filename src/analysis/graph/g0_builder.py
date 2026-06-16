@@ -10,7 +10,7 @@ from src.analysis.data.run_data import RunData
 DEFAULT_SIMULATION_LOG_DIR = Path("output/run_logs")
 DEFAULT_GRAPH_OUTPUT_DIR = Path("output/graphs")
 DEFAULT_GRAPH_OUTPUT = Path("output/graphs/g0.gexf")
-DEFAULT_GRAPH_LITE_OUTPUT = Path("output/graphs/g0.lite.gext")
+DEFAULT_GRAPH_LITE_OUTPUT = Path("output/graphs/g0.lite.gexf")
 MAX_GEPHI_ATTRIBUTE_CHARS = 4096
 GEPHI_DROPPED_PROVENANCE_ATTRS = {"source_log_node_ids", "node_origins", "edge_ids", "relations", "mechanisms","outcomes"}
 
@@ -271,7 +271,7 @@ def build_g0_exports(log_dir: Path | str = DEFAULT_SIMULATION_LOG_DIR, *, output
         verbose=verbose, logger=logger)
     output_dir.mkdir(parents=True, exist_ok=True)
     result.output_paths["g0_gephi"] = write_g0_gexf(result.graph, output_dir / "g0.gexf")
-    result.output_paths["g0_lite_gephi"] = write_g0_lite_gexf(result.graph, output_dir / "g0.lite.gext")
+    result.output_paths["g0_lite_gephi"] = write_g0_lite_gexf(result.graph, output_dir / "g0.lite.gexf")
     result.report.output_paths = {key: str(path) for key, path in result.output_paths.items()}
     if verbose:
         for key, path in result.output_paths.items():

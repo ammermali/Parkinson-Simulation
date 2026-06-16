@@ -65,3 +65,15 @@ class TimeContractionScheme(ContractionScheme):
 
     def _superedge_attr(self, superedge) -> dict[str, Any]:
         return summarize_superedges(superedge.dec)
+
+    def _update_added_node(self, supernode) -> None:
+        return None
+
+    def _update_removed_node(self, supernode) -> None:
+        return None
+
+    def _update_added_edge(self, superedge) -> None:
+        return None
+
+    def _update_removed_edge(self, superedge) -> None:
+        return None

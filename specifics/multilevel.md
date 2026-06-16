@@ -46,7 +46,7 @@ It writes only these graph artifacts:
 
 ```text
 g0.gexf
-g0.lite.gext
+g0.lite.gexf
 g1.gexf
 g2.gexf
 g3.gexf
@@ -56,10 +56,10 @@ g3.gexf
 
 ```text
 g0.gexf
-g0.lite.gext
+g0.lite.gexf
 ```
 
-`g0.lite.gext` keeps the same node ids and directed edges as G0, but removes
+`g0.lite.gexf` keeps the same node ids and directed edges as G0, but removes
 rich node attributes and keeps only the edge relation label. It is meant for
 fast PyVis/dashboard visualization, not for analytical contraction.
 

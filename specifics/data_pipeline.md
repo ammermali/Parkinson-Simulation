@@ -24,7 +24,7 @@ CSV/JSONL files under `output/tables` by default:
 The graph builders consume the semantic logs and write only:
 
 - `g0.gexf`
-- `g0.lite.gext`
+- `g0.lite.gexf`
 - `g1.gexf`
 - `g2.gexf`
 - `g3.gexf`
